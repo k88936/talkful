@@ -1,14 +1,19 @@
 use std::sync::Mutex;
 
 mod config;
+mod hotkey;
+mod state_machine;
 
 use config::{ConfigStore, TalkfulConfig};
+use hotkey::{register_runtime_hotkey, HotkeyCycle, MAX_HOLD_MS, MIN_HOLD_MS};
 use log::{error, info, warn};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use state_machine::{transition, RuntimeEvent, RuntimeState};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, State, WindowEvent, Wry};
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
+use tauri_plugin_global_shortcut::ShortcutState;
 
 const MENU_ID_STATUS: &str = "runtime_status";
 const MENU_ID_ACTION: &str = "runtime_action";
@@ -16,66 +21,10 @@ const MENU_ID_AUTOSTART: &str = "runtime_autostart";
 const MENU_ID_QUIT: &str = "runtime_quit";
 const TRAY_ID: &str = "talkful-runtime-tray";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RuntimeState {
-    Idle,
-    Recording,
-    Processing,
-    Error,
-}
-
-impl RuntimeState {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Idle => "Idle",
-            Self::Recording => "Recording",
-            Self::Processing => "Processing",
-            Self::Error => "Error",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RuntimeEvent {
-    HotkeyToggle,
-    AudioStarted,
-    AudioStopped,
-    AsrStarted,
-    AsrCompleted,
-    AsrFailed,
-    InjectionCompleted,
-    RuntimeFailure,
-    ResetError,
-}
-
 #[derive(Debug, Clone, Serialize)]
 struct RuntimeSnapshot {
     state: RuntimeState,
     autostart_enabled: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TransitionError {
-    from: RuntimeState,
-    event: RuntimeEvent,
-}
-
-fn transition(from: RuntimeState, event: RuntimeEvent) -> Result<RuntimeState, TransitionError> {
-    match (from, event) {
-        (RuntimeState::Idle, RuntimeEvent::HotkeyToggle)
-        | (RuntimeState::Idle, RuntimeEvent::AudioStarted) => Ok(RuntimeState::Recording),
-        (RuntimeState::Recording, RuntimeEvent::HotkeyToggle)
-        | (RuntimeState::Recording, RuntimeEvent::AudioStopped)
-        | (RuntimeState::Recording, RuntimeEvent::AsrStarted) => Ok(RuntimeState::Processing),
-        (RuntimeState::Processing, RuntimeEvent::AsrCompleted)
-        | (RuntimeState::Processing, RuntimeEvent::InjectionCompleted) => Ok(RuntimeState::Idle),
-        (_, RuntimeEvent::AsrFailed) | (_, RuntimeEvent::RuntimeFailure) => Ok(RuntimeState::Error),
-        (RuntimeState::Error, RuntimeEvent::ResetError)
-        | (RuntimeState::Error, RuntimeEvent::HotkeyToggle) => Ok(RuntimeState::Idle),
-        _ => Err(TransitionError { from, event }),
-    }
 }
 
 #[derive(Clone)]
@@ -103,6 +52,7 @@ impl Default for RuntimeModel {
 struct RuntimeController {
     model: Mutex<RuntimeModel>,
     tray: Mutex<Option<TrayHandles>>,
+    hotkey_cycle: HotkeyCycle,
 }
 
 impl RuntimeController {
@@ -122,6 +72,90 @@ impl RuntimeController {
     fn set_autostart_initial_value(&self, enabled: bool) {
         let mut model = self.model.lock().expect("runtime model poisoned");
         model.autostart_enabled = enabled;
+    }
+
+    fn handle_hotkey_event(&self, app: &tauri::AppHandle, shortcut_state: ShortcutState) {
+        match shortcut_state {
+            ShortcutState::Pressed => self.handle_hotkey_press(app),
+            ShortcutState::Released => self.handle_hotkey_release(app),
+        }
+    }
+
+    fn handle_hotkey_press(&self, app: &tauri::AppHandle) {
+        let Some(cycle_id) = self.hotkey_cycle.on_press() else {
+            info!("ignored duplicate hotkey pressed event");
+            return;
+        };
+
+        self.apply_event(app, RuntimeEvent::HotkeyPress, "hotkey pressed".to_string());
+        self.spawn_timeout_guard(app.clone(), cycle_id);
+    }
+
+    fn handle_hotkey_release(&self, app: &tauri::AppHandle) {
+        let Some((cycle_id, elapsed)) = self.hotkey_cycle.on_release() else {
+            info!("ignored duplicate hotkey released event");
+            return;
+        };
+
+        let min_hold = hotkey::min_hold_duration();
+        if elapsed >= min_hold {
+            self.finalize_hold_cycle(app, cycle_id, false, "hotkey released".to_string());
+        } else {
+            let remaining = min_hold.saturating_sub(elapsed);
+            let app_handle = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(remaining);
+                let runtime = app_handle.state::<RuntimeController>();
+                runtime.finalize_hold_cycle(
+                    &app_handle,
+                    cycle_id,
+                    false,
+                    format!(
+                        "hotkey released before threshold (delayed {}ms)",
+                        MIN_HOLD_MS
+                    ),
+                );
+            });
+        }
+    }
+
+    fn spawn_timeout_guard(&self, app: tauri::AppHandle, cycle_id: u64) {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(MAX_HOLD_MS));
+            let runtime = app.state::<RuntimeController>();
+            runtime.finalize_hold_cycle(
+                &app,
+                cycle_id,
+                true,
+                format!("hotkey max hold timeout ({}ms)", MAX_HOLD_MS),
+            );
+        });
+    }
+
+    fn finalize_hold_cycle(
+        &self,
+        app: &tauri::AppHandle,
+        cycle_id: u64,
+        from_timeout: bool,
+        reason: String,
+    ) {
+        let event = if from_timeout {
+            if !self.hotkey_cycle.finalize_timeout(cycle_id) {
+                return;
+            }
+            RuntimeEvent::HotkeyTimeout
+        } else {
+            if !self.hotkey_cycle.finalize_release(cycle_id) {
+                return;
+            }
+            RuntimeEvent::HotkeyRelease
+        };
+
+        if from_timeout {
+            warn!("{reason}");
+        }
+
+        self.apply_event(app, event, reason);
     }
 
     fn apply_event(&self, app: &tauri::AppHandle, event: RuntimeEvent, reason: String) {
@@ -206,12 +240,17 @@ impl RuntimeController {
         if let Err(err) = handles.action_item.set_enabled(action_enabled) {
             error!("failed to set tray action enabled state: {err}");
         }
-        if let Err(err) = handles.autostart_item.set_checked(snapshot.autostart_enabled) {
+        if let Err(err) = handles
+            .autostart_item
+            .set_checked(snapshot.autostart_enabled)
+        {
             error!("failed to set tray autostart check state: {err}");
         }
 
         if let Some(tray_icon) = app.tray_by_id(TRAY_ID) {
-            if let Err(err) = tray_icon.set_tooltip(Some(format!("talkful: {}", snapshot.state.label()))) {
+            if let Err(err) =
+                tray_icon.set_tooltip(Some(format!("talkful: {}", snapshot.state.label())))
+            {
                 error!("failed to set tray tooltip: {err}");
             }
         }
@@ -280,9 +319,16 @@ fn update_config(
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<TrayHandles> {
     let status_item = MenuItem::with_id(app, MENU_ID_STATUS, "Status: Idle", false, None::<&str>)?;
-    let action_item = MenuItem::with_id(app, MENU_ID_ACTION, "Start Recording", true, None::<&str>)?;
-    let autostart_item =
-        CheckMenuItem::with_id(app, MENU_ID_AUTOSTART, "Start At Login", true, false, None::<&str>)?;
+    let action_item =
+        MenuItem::with_id(app, MENU_ID_ACTION, "Start Recording", true, None::<&str>)?;
+    let autostart_item = CheckMenuItem::with_id(
+        app,
+        MENU_ID_AUTOSTART,
+        "Start At Login",
+        true,
+        false,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, MENU_ID_QUIT, "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -346,6 +392,14 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<TrayHandles> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, _, event| {
+                    let runtime = app.state::<RuntimeController>();
+                    runtime.handle_hotkey_event(app, event.state());
+                })
+                .build(),
+        )
+        .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .build(),
@@ -369,7 +423,9 @@ pub fn run() {
             app.manage(config_store);
 
             let controller = app.state::<RuntimeController>();
-            if let Err(err) = controller.set_autostart(app.handle(), config.autostart_enabled, "startup config") {
+            if let Err(err) =
+                controller.set_autostart(app.handle(), config.autostart_enabled, "startup config")
+            {
                 warn!("failed to apply startup autostart preference: {err}");
                 let plugin_enabled = app.autolaunch().is_enabled().unwrap_or(false);
                 controller.set_autostart_initial_value(plugin_enabled);
@@ -378,6 +434,10 @@ pub fn run() {
             let tray_handles = build_tray(app.handle())?;
             controller.register_tray(tray_handles);
             controller.sync_tray(app.handle());
+
+            let active_hotkey =
+                register_runtime_hotkey(app, &config.hotkey_key).map_err(tauri::Error::from)?;
+            info!("registered runtime hotkey key '{}'", active_hotkey);
 
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(err) = window.hide() {
@@ -414,14 +474,14 @@ mod tests {
     #[test]
     fn valid_flow_idle_recording_processing_idle() {
         let s1 = transition(RuntimeState::Idle, RuntimeEvent::HotkeyToggle).unwrap();
-        let s2 = transition(s1, RuntimeEvent::AudioStopped).unwrap();
-        let s3 = transition(s2, RuntimeEvent::AsrCompleted).unwrap();
+        let s2 = transition(s1, RuntimeEvent::HotkeyRelease).unwrap();
+        let s3 = transition(s2, RuntimeEvent::ProcessComplete).unwrap();
         assert_eq!(s3, RuntimeState::Idle);
     }
 
     #[test]
     fn invalid_transition_is_rejected() {
-        let result = transition(RuntimeState::Idle, RuntimeEvent::AsrCompleted);
+        let result = transition(RuntimeState::Idle, RuntimeEvent::ProcessComplete);
         assert!(result.is_err());
     }
 

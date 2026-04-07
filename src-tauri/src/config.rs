@@ -12,9 +12,8 @@ pub struct WindowConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TalkfulConfig {
-    #[serde(default)]
     pub autostart_enabled: bool,
-    #[serde(default)]
+    pub hotkey_key: String,
     window: WindowConfig,
 }
 
@@ -22,6 +21,7 @@ impl Default for TalkfulConfig {
     fn default() -> Self {
         Self {
             autostart_enabled: false,
+            hotkey_key: "f8".into(),
             window: WindowConfig::default(),
         }
     }
