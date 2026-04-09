@@ -1,10 +1,13 @@
 use std::sync::Mutex;
 
-mod config;
+pub mod config;
 mod hotkey;
+pub mod record;
+pub mod refine;
 mod state_machine;
+pub mod asr;
 
-use config::{ConfigStore, TalkfulConfig};
+use crate::config::{ConfigStore, TalkfulConfig};
 use hotkey::{register_runtime_hotkey, HotkeyCycle, MAX_HOLD_MS, MIN_HOLD_MS};
 use log::{error, info, warn};
 use serde::Serialize;

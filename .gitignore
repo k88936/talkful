@@ -24,5 +24,7 @@ dist-ssr
 *.sw?
 sherpa-rs
 tauri-demo
-/models/
-/.codex
+models
+.codex
+cpal-demo
+llama-cpp-rs

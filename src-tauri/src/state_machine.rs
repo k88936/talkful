@@ -43,9 +43,11 @@ pub(crate) fn transition(
     event: RuntimeEvent,
 ) -> Result<RuntimeState, TransitionError> {
     match (from, event) {
-        (RuntimeState::Idle, RuntimeEvent::HotkeyPress) => Ok(RuntimeState::Recording),
+        (RuntimeState::Idle, RuntimeEvent::HotkeyPress)
+        | (RuntimeState::Idle, RuntimeEvent::HotkeyToggle) => Ok(RuntimeState::Recording),
         (RuntimeState::Recording, RuntimeEvent::HotkeyRelease)
-        | (RuntimeState::Recording, RuntimeEvent::HotkeyTimeout) => Ok(RuntimeState::Processing),
+        | (RuntimeState::Recording, RuntimeEvent::HotkeyTimeout)
+        | (RuntimeState::Recording, RuntimeEvent::HotkeyToggle) => Ok(RuntimeState::Processing),
         (RuntimeState::Processing, RuntimeEvent::ProcessComplete) => Ok(RuntimeState::Idle),
         (_, RuntimeEvent::RuntimeFailure) => Ok(RuntimeState::Error),
         (RuntimeState::Error, RuntimeEvent::ResetError)
