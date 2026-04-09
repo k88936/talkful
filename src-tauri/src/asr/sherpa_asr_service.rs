@@ -33,7 +33,7 @@ impl ASRService for SherpaASRService {
         .expect("resample failed");
         Ok(self
             .recognizer
-            .transcribe(sample.sample_rate, &resampled)
+            .transcribe(Self::TARGET_SAMPLE_RATE_HZ, &resampled)
             .text)
     }
 }
