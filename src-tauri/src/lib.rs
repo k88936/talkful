@@ -1,11 +1,12 @@
 use std::sync::Mutex;
 
-pub mod config;
 mod hotkey;
+
+pub mod asr;
+pub mod config;
 pub mod record;
 pub mod refine;
 mod state_machine;
-pub mod asr;
 
 use crate::config::{ConfigStore, TalkfulConfig};
 use hotkey::{register_runtime_hotkey, HotkeyCycle, MAX_HOLD_MS, MIN_HOLD_MS};

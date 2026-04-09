@@ -6,7 +6,7 @@ use talkful_lib::asr::sherpa_asr_service::SherpaASRService;
 use talkful_lib::record::cpal_record_service::CPALRecordService;
 use talkful_lib::record::{RecordService, RecordSignal};
 
-const RECORD_DURATION_SECONDS: u64 = 16;
+const RECORD_DURATION_SECONDS: u64 = 32;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {

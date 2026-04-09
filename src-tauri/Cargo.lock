@@ -4425,7 +4425,6 @@ dependencies = [
  "llama-cpp-2",
  "log",
  "serde",
- "serde_json",
  "serde_yaml",
  "sherpa-rs",
  "tauri",
@@ -4435,7 +4434,6 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
- "tempfile",
  "tokio",
 ]
 
