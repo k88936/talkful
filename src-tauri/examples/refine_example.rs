@@ -1,5 +1,6 @@
 use std::time::Instant;
-use talkful_lib::refine::{LlamaRefineService, RefineService};
+use talkful_lib::refine::llama_refine_service::LlamaRefineService;
+use talkful_lib::refine::RefineService;
 
 fn main() {
     let src = r#"
@@ -17,7 +18,7 @@ Apply the following rules strictly:
 5. CLARIFY: Rephrase awkward or ambiguous phrasing for clarity and conciseness without changing the original intent or tone.
 
 Output ONLY the final polished text. Do not include explanations, notes, or markdown code blocks.    "#;
-    let mut refiner = LlamaRefineService::new(Some("models/llm/qwen3-0.6b.gguf")).unwrap();
+    let mut refiner = LlamaRefineService::new(Some("models/llm/qwen3-0.6e.gguf")).unwrap();
 
     let start = Instant::now();
     let result = refiner.refine(src, prompt).unwrap();

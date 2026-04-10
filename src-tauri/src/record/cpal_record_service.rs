@@ -1,8 +1,8 @@
-use std::future::Future;
 use crate::record::{RecordResult, RecordService, RecordSignal};
 use anyhow::Error;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample};
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
@@ -15,7 +15,10 @@ impl CPALRecordService {
 }
 
 impl RecordService for CPALRecordService {
-    fn record(&self, signal: oneshot::Receiver<RecordSignal>) -> impl Future<Output = Result<RecordResult, Error>> + Send {
+    fn record(
+        &self,
+        signal: oneshot::Receiver<RecordSignal>,
+    ) -> impl Future<Output = Result<RecordResult, Error>> + Send {
         async move {
             let host = cpal::default_host();
 
@@ -37,25 +40,33 @@ impl RecordService for CPALRecordService {
             let stream = match config.sample_format() {
                 cpal::SampleFormat::I8 => device.build_input_stream(
                     &config.clone().into(),
-                    move |data, _: &_| collect_audio_data::<i8>(data, &buffer_append_handle, channels),
+                    move |data, _: &_| {
+                        collect_audio_data::<i8>(data, &buffer_append_handle, channels)
+                    },
                     err_fn,
                     None,
                 )?,
                 cpal::SampleFormat::I16 => device.build_input_stream(
                     &config.clone().into(),
-                    move |data, _: &_| collect_audio_data::<i16>(data, &buffer_append_handle, channels),
+                    move |data, _: &_| {
+                        collect_audio_data::<i16>(data, &buffer_append_handle, channels)
+                    },
                     err_fn,
                     None,
                 )?,
                 cpal::SampleFormat::I32 => device.build_input_stream(
                     &config.clone().into(),
-                    move |data, _: &_| collect_audio_data::<i32>(data, &buffer_append_handle, channels),
+                    move |data, _: &_| {
+                        collect_audio_data::<i32>(data, &buffer_append_handle, channels)
+                    },
                     err_fn,
                     None,
                 )?,
                 cpal::SampleFormat::F32 => device.build_input_stream(
                     &config.clone().into(),
-                    move |data, _: &_| collect_audio_data::<f32>(data, &buffer_append_handle, channels),
+                    move |data, _: &_| {
+                        collect_audio_data::<f32>(data, &buffer_append_handle, channels)
+                    },
                     err_fn,
                     None,
                 )?,
@@ -104,4 +115,3 @@ where
         };
     }
 }
-

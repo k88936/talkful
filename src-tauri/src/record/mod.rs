@@ -1,8 +1,7 @@
 pub mod cpal_record_service;
-use std::future::Future;
 use anyhow::Error;
+use std::future::Future;
 use tokio::sync::oneshot;
-
 
 #[derive(Debug)]
 pub enum RecordSignal {
@@ -15,5 +14,8 @@ pub struct RecordResult {
 }
 
 pub trait RecordService {
-    fn record(&self, signal: oneshot::Receiver<RecordSignal>) -> impl Future<Output = Result<RecordResult, Error>>+Send;
+    fn record(
+        &self,
+        signal: oneshot::Receiver<RecordSignal>,
+    ) -> impl Future<Output = Result<RecordResult, Error>> + Send;
 }

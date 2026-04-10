@@ -1,16 +1,17 @@
 use std::sync::Mutex;
 
 mod hotkey;
+mod runtime_pipeline;
 
 pub mod asr;
 pub mod config;
 pub mod record;
-pub mod refine;
 mod state_machine;
 
 use crate::config::{ConfigStore, TalkfulConfig};
 use hotkey::{register_runtime_hotkey, HotkeyCycle, MAX_HOLD_MS, MIN_HOLD_MS};
 use log::{error, info, warn};
+use runtime_pipeline::RuntimePipeline;
 use serde::Serialize;
 use state_machine::{transition, RuntimeEvent, RuntimeState};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
@@ -57,6 +58,7 @@ struct RuntimeController {
     model: Mutex<RuntimeModel>,
     tray: Mutex<Option<TrayHandles>>,
     hotkey_cycle: HotkeyCycle,
+    pipeline: RuntimePipeline,
 }
 
 impl RuntimeController {
@@ -183,6 +185,7 @@ impl RuntimeController {
                     new_state.label()
                 );
                 self.sync_tray(app);
+                self.handle_transition_effects(app, old_state, new_state);
             }
             Err(err) => {
                 warn!(
@@ -192,6 +195,69 @@ impl RuntimeController {
                     reason
                 );
             }
+        }
+    }
+
+    fn handle_transition_effects(
+        &self,
+        app: &tauri::AppHandle,
+        old_state: RuntimeState,
+        new_state: RuntimeState,
+    ) {
+        if old_state == RuntimeState::Idle && new_state == RuntimeState::Recording {
+            if let Err(err) = self.pipeline.start_recording() {
+                error!("failed to start recording pipeline: {err:#}");
+                self.apply_event(
+                    app,
+                    RuntimeEvent::RuntimeFailure,
+                    format!("failed to start recording: {err:#}"),
+                );
+            }
+            return;
+        }
+
+        if old_state == RuntimeState::Recording && new_state == RuntimeState::Processing {
+            let result_rx = match self.pipeline.stop_recording_and_process() {
+                Ok(result_rx) => result_rx,
+                Err(err) => {
+                    error!("failed to stop recording pipeline: {err:#}");
+                    self.apply_event(
+                        app,
+                        RuntimeEvent::RuntimeFailure,
+                        format!("failed to stop recording: {err:#}"),
+                    );
+                    return;
+                }
+            };
+
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let runtime = app_handle.state::<RuntimeController>();
+                match result_rx.await {
+                    Ok(Ok(refined_text)) => {
+                        info!("processed {} characters", refined_text.chars().count());
+                        runtime.apply_event(
+                            &app_handle,
+                            RuntimeEvent::ProcessComplete,
+                            "recording pipeline completed".to_string(),
+                        );
+                    }
+                    Ok(Err(err)) => {
+                        runtime.apply_event(
+                            &app_handle,
+                            RuntimeEvent::RuntimeFailure,
+                            format!("recording pipeline failed: {err:#}"),
+                        );
+                    }
+                    Err(err) => {
+                        runtime.apply_event(
+                            &app_handle,
+                            RuntimeEvent::RuntimeFailure,
+                            format!("recording pipeline receiver dropped: {err}"),
+                        );
+                    }
+                }
+            });
         }
     }
 
