@@ -131,7 +131,7 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
         .title("talkful")
         .build()?;
     // float widget
-    
+
     build_float_window(app.handle());
 
     Ok(())
@@ -143,8 +143,9 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .resizable(false)
         .closable(false)
         .focused(false)
+        .focusable(false)
         .transparent(true)
-        .background_color(Color(0, 0, 0, 64))
+        .background_color(Color(0, 0, 0, 128))
         .shadow(false)
         .decorations(false)
         .always_on_top(true)
