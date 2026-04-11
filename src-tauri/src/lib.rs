@@ -1,565 +1,155 @@
+use std::error::Error;
 use std::sync::Mutex;
-
-mod hotkey;
-mod runtime_pipeline;
-
 pub mod asr;
 pub mod config;
 pub mod record;
-mod state_machine;
+use crate::asr::sherpa_asr_service::SherpaASRService;
+use crate::asr::ASRService;
+use crate::config::{DotfileConfigStore, IConfigStore};
+use crate::record::cpal_record_service::CPALRecordService;
+use crate::record::{RecordService, RecordSignal};
+use anyhow::Result;
+use enigo::{Enigo, Keyboard, Settings};
+use tauri::window::Color;
+use tauri::{App, AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut};
+use tokio::sync::oneshot;
 
-use crate::config::{ConfigStore, TalkfulConfig};
-use hotkey::{register_runtime_hotkey, HotkeyCycle, MAX_HOLD_MS, MIN_HOLD_MS};
-use log::{error, info, warn};
-use runtime_pipeline::RuntimePipeline;
-use serde::Serialize;
-use state_machine::{transition, RuntimeEvent, RuntimeState};
-use tauri::menu::{CheckMenuItem, Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, State, WindowEvent, Wry};
-use tauri_plugin_autostart::ManagerExt as AutostartExt;
-use tauri_plugin_global_shortcut::ShortcutState;
-
-const MENU_ID_STATUS: &str = "runtime_status";
-const MENU_ID_ACTION: &str = "runtime_action";
-const MENU_ID_AUTOSTART: &str = "runtime_autostart";
-const MENU_ID_QUIT: &str = "runtime_quit";
-const TRAY_ID: &str = "talkful-runtime-tray";
-
-#[derive(Debug, Clone, Serialize)]
-struct RuntimeSnapshot {
-    state: RuntimeState,
-    autostart_enabled: bool,
+pub struct AppServices {
+    asr_service: Mutex<SherpaASRService>,
+    record_service: CPALRecordService,
 }
-
-#[derive(Clone)]
-struct TrayHandles {
-    status_item: MenuItem<Wry>,
-    action_item: MenuItem<Wry>,
-    autostart_item: CheckMenuItem<Wry>,
+pub struct AppState {
+    record_signal_tx: Mutex<Option<oneshot::Sender<RecordSignal>>>,
 }
+pub fn on_record_started(app: &AppHandle) {
+    // show the float window in the focused monitor
+    let cursor_pos = app.cursor_position().unwrap();
+    let target_monitor = app
+        .monitor_from_point(cursor_pos.x, cursor_pos.y)
+        .unwrap()
+        .unwrap();
+    let screen_size = target_monitor.size();
+    let screen_pos = target_monitor.position();
 
-struct RuntimeModel {
-    state: RuntimeState,
-    autostart_enabled: bool,
-}
+    let window_width = 256;
+    let window_height = 64;
 
-impl Default for RuntimeModel {
-    fn default() -> Self {
-        Self {
-            state: RuntimeState::Idle,
-            autostart_enabled: false,
+    let x = screen_pos.x + (screen_size.width as i32 - window_width) / 2;
+    let y = screen_pos.y + (screen_size.height as i32 - window_height) - 256;
+    let window = app
+        .get_webview_window("float")
+        // recreate if fail
+        .unwrap_or_else(|| build_float_window(app));
+    // set pos and size
+    window
+        .set_size(PhysicalSize::new(window_width, window_height))
+        .unwrap();
+    window.set_position(PhysicalPosition::new(x, y)).unwrap();
+    window.show().unwrap();
+
+    let (signal_tx, signal_rx) = oneshot::channel();
+    let handle_cpy = app.clone();
+    tokio::spawn(async move {
+        let services = handle_cpy.state::<AppServices>().inner();
+        workflow(services, signal_rx).await;
+        // hide the window afterward
+        if let Some(window) = handle_cpy.get_webview_window("float") {
+            window.hide().unwrap();
         }
+    });
+
+    let state = app.state::<AppState>();
+    // store the stop signal tx
+    {
+        let mut guard = state.record_signal_tx.lock().expect("poisoned");
+        if let Some(sender) = guard.take() {
+            sender
+                .send(RecordSignal::Stop)
+                .expect("recording task dropped before stop signal");
+        }
+        *guard = Some(signal_tx);
     }
 }
+async fn workflow(services: &AppServices, signal: oneshot::Receiver<RecordSignal>) {
+    if let Ok(recorded) = services.record_service.record(signal).await {
+        let result = services.asr_service.lock().expect("poisoned").asr(recorded);
 
-#[derive(Default)]
-struct RuntimeController {
-    model: Mutex<RuntimeModel>,
-    tray: Mutex<Option<TrayHandles>>,
-    hotkey_cycle: HotkeyCycle,
-    pipeline: RuntimePipeline,
+        let mut enigo = Enigo::new(&Settings::default()).unwrap();
+        enigo.text(&result).expect("should inject text");
+    }
 }
-
-impl RuntimeController {
-    fn snapshot(&self) -> RuntimeSnapshot {
-        let model = self.model.lock().expect("runtime model poisoned");
-        RuntimeSnapshot {
-            state: model.state,
-            autostart_enabled: model.autostart_enabled,
-        }
-    }
-
-    fn register_tray(&self, handles: TrayHandles) {
-        let mut tray = self.tray.lock().expect("tray state poisoned");
-        *tray = Some(handles);
-    }
-
-    fn set_autostart_initial_value(&self, enabled: bool) {
-        let mut model = self.model.lock().expect("runtime model poisoned");
-        model.autostart_enabled = enabled;
-    }
-
-    fn handle_hotkey_event(&self, app: &tauri::AppHandle, shortcut_state: ShortcutState) {
-        match shortcut_state {
-            ShortcutState::Pressed => self.handle_hotkey_press(app),
-            ShortcutState::Released => self.handle_hotkey_release(app),
-        }
-    }
-
-    fn handle_hotkey_press(&self, app: &tauri::AppHandle) {
-        let Some(cycle_id) = self.hotkey_cycle.on_press() else {
-            info!("ignored duplicate hotkey pressed event");
-            return;
-        };
-
-        self.apply_event(app, RuntimeEvent::HotkeyPress, "hotkey pressed".to_string());
-        self.spawn_timeout_guard(app.clone(), cycle_id);
-    }
-
-    fn handle_hotkey_release(&self, app: &tauri::AppHandle) {
-        let Some((cycle_id, elapsed)) = self.hotkey_cycle.on_release() else {
-            info!("ignored duplicate hotkey released event");
-            return;
-        };
-
-        let min_hold = hotkey::min_hold_duration();
-        if elapsed >= min_hold {
-            self.finalize_hold_cycle(app, cycle_id, false, "hotkey released".to_string());
-        } else {
-            let remaining = min_hold.saturating_sub(elapsed);
-            let app_handle = app.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(remaining);
-                let runtime = app_handle.state::<RuntimeController>();
-                runtime.finalize_hold_cycle(
-                    &app_handle,
-                    cycle_id,
-                    false,
-                    format!(
-                        "hotkey released before threshold (delayed {}ms)",
-                        MIN_HOLD_MS
-                    ),
-                );
-            });
-        }
-    }
-
-    fn spawn_timeout_guard(&self, app: tauri::AppHandle, cycle_id: u64) {
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(MAX_HOLD_MS));
-            let runtime = app.state::<RuntimeController>();
-            runtime.finalize_hold_cycle(
-                &app,
-                cycle_id,
-                true,
-                format!("hotkey max hold timeout ({}ms)", MAX_HOLD_MS),
-            );
-        });
-    }
-
-    fn finalize_hold_cycle(
-        &self,
-        app: &tauri::AppHandle,
-        cycle_id: u64,
-        from_timeout: bool,
-        reason: String,
-    ) {
-        let event = if from_timeout {
-            if !self.hotkey_cycle.finalize_timeout(cycle_id) {
-                return;
+pub fn on_record_ended(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    {
+        let mut guard = state
+            .record_signal_tx
+            .lock()
+            .expect("AppState.record_signal_rx poisoned");
+        match guard.take() {
+            Some(sender) => {
+                sender
+                    .send(RecordSignal::Stop)
+                    .expect("record signal tx dropped");
+                *guard = None;
             }
-            RuntimeEvent::HotkeyTimeout
-        } else {
-            if !self.hotkey_cycle.finalize_release(cycle_id) {
-                return;
-            }
-            RuntimeEvent::HotkeyRelease
-        };
-
-        if from_timeout {
-            warn!("{reason}");
-        }
-
-        self.apply_event(app, event, reason);
-    }
-
-    fn apply_event(&self, app: &tauri::AppHandle, event: RuntimeEvent, reason: String) {
-        let (old_state, new_state_or_err) = {
-            let mut model = self.model.lock().expect("runtime model poisoned");
-            let old_state = model.state;
-            let transitioned = transition(old_state, event);
-            if let Ok(new_state) = transitioned {
-                model.state = new_state;
-            }
-            (old_state, transitioned)
-        };
-
-        match new_state_or_err {
-            Ok(new_state) => {
-                info!(
-                    "runtime transition: {} --({:?}, reason: {})--> {}",
-                    old_state.label(),
-                    event,
-                    reason,
-                    new_state.label()
-                );
-                self.sync_tray(app);
-                self.handle_transition_effects(app, old_state, new_state);
-            }
-            Err(err) => {
-                warn!(
-                    "blocked invalid transition: {} --({:?}, reason: {})--> <invalid>",
-                    err.from.label(),
-                    err.event,
-                    reason
-                );
-            }
-        }
-    }
-
-    fn handle_transition_effects(
-        &self,
-        app: &tauri::AppHandle,
-        old_state: RuntimeState,
-        new_state: RuntimeState,
-    ) {
-        if old_state == RuntimeState::Idle && new_state == RuntimeState::Recording {
-            if let Err(err) = self.pipeline.start_recording() {
-                error!("failed to start recording pipeline: {err:#}");
-                self.apply_event(
-                    app,
-                    RuntimeEvent::RuntimeFailure,
-                    format!("failed to start recording: {err:#}"),
-                );
-            }
-            return;
-        }
-
-        if old_state == RuntimeState::Recording && new_state == RuntimeState::Processing {
-            let result_rx = match self.pipeline.stop_recording_and_process() {
-                Ok(result_rx) => result_rx,
-                Err(err) => {
-                    error!("failed to stop recording pipeline: {err:#}");
-                    self.apply_event(
-                        app,
-                        RuntimeEvent::RuntimeFailure,
-                        format!("failed to stop recording: {err:#}"),
-                    );
-                    return;
-                }
-            };
-
-            let app_handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let runtime = app_handle.state::<RuntimeController>();
-                match result_rx.await {
-                    Ok(Ok(refined_text)) => {
-                        info!("processed {} characters", refined_text.chars().count());
-                        runtime.apply_event(
-                            &app_handle,
-                            RuntimeEvent::ProcessComplete,
-                            "recording pipeline completed".to_string(),
-                        );
-                    }
-                    Ok(Err(err)) => {
-                        runtime.apply_event(
-                            &app_handle,
-                            RuntimeEvent::RuntimeFailure,
-                            format!("recording pipeline failed: {err:#}"),
-                        );
-                    }
-                    Err(err) => {
-                        runtime.apply_event(
-                            &app_handle,
-                            RuntimeEvent::RuntimeFailure,
-                            format!("recording pipeline receiver dropped: {err}"),
-                        );
-                    }
-                }
-            });
-        }
-    }
-
-    fn set_autostart(
-        &self,
-        app: &tauri::AppHandle,
-        enabled: bool,
-        reason: &str,
-    ) -> Result<(), String> {
-        let manager = app.autolaunch();
-        let op_result = if enabled {
-            manager.enable()
-        } else {
-            manager.disable()
-        };
-        op_result.map_err(|e| e.to_string())?;
-
-        {
-            let mut model = self.model.lock().expect("runtime model poisoned");
-            model.autostart_enabled = enabled;
-        }
-        info!("autostart updated to {} (reason: {})", enabled, reason);
-        self.sync_tray(app);
-        Ok(())
-    }
-
-    fn sync_tray(&self, app: &tauri::AppHandle) {
-        let snapshot = self.snapshot();
-        let tray = self.tray.lock().expect("tray state poisoned");
-        let Some(handles) = tray.as_ref() else {
-            return;
-        };
-
-        if let Err(err) = handles
-            .status_item
-            .set_text(format!("Status: {}", snapshot.state.label()))
-        {
-            error!("failed to set tray status label: {err}");
-        }
-
-        let (action_text, action_enabled) = match snapshot.state {
-            RuntimeState::Idle => ("Start Recording", true),
-            RuntimeState::Recording => ("Stop Recording", true),
-            RuntimeState::Processing => ("Processing...", false),
-            RuntimeState::Error => ("Reset To Idle", true),
-        };
-        if let Err(err) = handles.action_item.set_text(action_text) {
-            error!("failed to set tray action text: {err}");
-        }
-        if let Err(err) = handles.action_item.set_enabled(action_enabled) {
-            error!("failed to set tray action enabled state: {err}");
-        }
-        if let Err(err) = handles
-            .autostart_item
-            .set_checked(snapshot.autostart_enabled)
-        {
-            error!("failed to set tray autostart check state: {err}");
-        }
-
-        if let Some(tray_icon) = app.tray_by_id(TRAY_ID) {
-            if let Err(err) =
-                tray_icon.set_tooltip(Some(format!("talkful: {}", snapshot.state.label())))
-            {
-                error!("failed to set tray tooltip: {err}");
+            None => {
+                panic!("no running workflow")
             }
         }
     }
 }
 
-fn persist_autostart_preference(app: &tauri::AppHandle, enabled: bool, reason: &str) {
-    let config_store = app.state::<ConfigStore>();
-    if let Err(err) = config_store.set_autostart(enabled) {
-        error!(
-            "failed to persist autostart preference {} (reason: {}): {}",
-            enabled,
-            reason,
-            format!("{err:#}")
-        );
-    }
-}
+pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
+    // load config
+    let config_store = DotfileConfigStore::new()?;
+    let config = config_store.get();
+    app.manage(config_store);
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+    // TODO accept the error, allowing user correct config in the web ui.
+    let asr = SherpaASRService::new(&config.asr_model_filename, &config.asr_token_filename)
+        .expect("should init asr service");
+    let recorder = CPALRecordService::new();
 
-#[tauri::command]
-fn runtime_bus_emit(
-    app: tauri::AppHandle,
-    controller: State<'_, RuntimeController>,
-    event: RuntimeEvent,
-    reason: Option<String>,
-) {
-    let reason = reason.unwrap_or_else(|| "runtime_bus_emit".to_string());
-    controller.apply_event(&app, event, reason);
-}
+    let services = AppServices {
+        asr_service: Mutex::new(asr),
+        record_service: recorder,
+    };
+    app.manage(services);
+    let state = AppState {
+        record_signal_tx: Mutex::new(None),
+    };
+    app.manage(state);
 
-#[tauri::command]
-fn runtime_snapshot(controller: State<'_, RuntimeController>) -> RuntimeSnapshot {
-    controller.snapshot()
-}
+    // register trigger shortcut
+    app.global_shortcut()
+        .register(Shortcut::new(None, Code::F8))?;
 
-#[tauri::command]
-fn set_autostart(
-    app: tauri::AppHandle,
-    controller: State<'_, RuntimeController>,
-    enabled: bool,
-) -> Result<(), String> {
-    controller.set_autostart(&app, enabled, "set_autostart command")?;
-    persist_autostart_preference(&app, enabled, "set_autostart command");
+    // window
+    let main_window_url = tauri::WebviewUrl::App("index.html".into());
+    tauri::WebviewWindowBuilder::new(app, "main", main_window_url)
+        .title("talkful")
+        .build()?;
+    // float widget
+    build_float_window(app.handle());
+
     Ok(())
 }
 
-#[tauri::command]
-fn get_config(config_store: State<'_, ConfigStore>) -> Result<TalkfulConfig, String> {
-    config_store.get().map_err(|e| format!("{e:#}"))
-}
-
-#[tauri::command]
-fn update_config(
-    app: tauri::AppHandle,
-    controller: State<'_, RuntimeController>,
-    config_store: State<'_, ConfigStore>,
-    config: TalkfulConfig,
-) -> Result<TalkfulConfig, String> {
-    controller.set_autostart(&app, config.autostart_enabled, "update_config command")?;
-    config_store.update(config).map_err(|e| format!("{e:#}"))
-}
-
-fn build_tray(app: &tauri::AppHandle) -> tauri::Result<TrayHandles> {
-    let status_item = MenuItem::with_id(app, MENU_ID_STATUS, "Status: Idle", false, None::<&str>)?;
-    let action_item =
-        MenuItem::with_id(app, MENU_ID_ACTION, "Start Recording", true, None::<&str>)?;
-    let autostart_item = CheckMenuItem::with_id(
-        app,
-        MENU_ID_AUTOSTART,
-        "Start At Login",
-        true,
-        false,
-        None::<&str>,
-    )?;
-    let quit_item = MenuItem::with_id(app, MENU_ID_QUIT, "Quit", true, None::<&str>)?;
-
-    let menu = Menu::with_items(
-        app,
-        &[&status_item, &action_item, &autostart_item, &quit_item],
-    )?;
-
-    TrayIconBuilder::with_id(TRAY_ID)
-        .menu(&menu)
-        .tooltip("talkful: Idle")
-        .on_menu_event(|app, event| {
-            let runtime = app.state::<RuntimeController>();
-            match event.id.as_ref() {
-                MENU_ID_ACTION => {
-                    let state = runtime.snapshot().state;
-                    match state {
-                        RuntimeState::Idle => runtime.apply_event(
-                            app,
-                            RuntimeEvent::HotkeyToggle,
-                            "tray action: start recording".to_string(),
-                        ),
-                        RuntimeState::Recording => runtime.apply_event(
-                            app,
-                            RuntimeEvent::HotkeyToggle,
-                            "tray action: stop recording".to_string(),
-                        ),
-                        RuntimeState::Error => runtime.apply_event(
-                            app,
-                            RuntimeEvent::ResetError,
-                            "tray action: reset error".to_string(),
-                        ),
-                        RuntimeState::Processing => {
-                            warn!("ignored tray action in Processing state");
-                        }
-                    }
-                }
-                MENU_ID_AUTOSTART => {
-                    let enabled = !runtime.snapshot().autostart_enabled;
-                    match runtime.set_autostart(app, enabled, "tray toggle") {
-                        Ok(()) => persist_autostart_preference(app, enabled, "tray toggle"),
-                        Err(err) => error!("failed to toggle autostart from tray: {err}"),
-                    }
-                }
-                MENU_ID_QUIT => {
-                    info!("shutdown requested from tray");
-                    app.exit(0);
-                }
-                _ => {}
-            }
-        })
-        .build(app)?;
-
-    Ok(TrayHandles {
-        status_item,
-        action_item,
-        autostart_item,
-    })
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, _, event| {
-                    let runtime = app.state::<RuntimeController>();
-                    runtime.handle_hotkey_event(app, event.state());
-                })
-                .build(),
-        )
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
-                .build(),
-        )
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
-        ))
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            info!("secondary instance launch intercepted");
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
-        .manage(RuntimeController::default())
-        .setup(|app| {
-            let config_store = ConfigStore::load().map_err(tauri::Error::from)?;
-            let config = config_store.get().map_err(tauri::Error::from)?;
-            app.manage(config_store);
-
-            let controller = app.state::<RuntimeController>();
-            if let Err(err) =
-                controller.set_autostart(app.handle(), config.autostart_enabled, "startup config")
-            {
-                warn!("failed to apply startup autostart preference: {err}");
-                let plugin_enabled = app.autolaunch().is_enabled().unwrap_or(false);
-                controller.set_autostart_initial_value(plugin_enabled);
-            }
-
-            let tray_handles = build_tray(app.handle())?;
-            controller.register_tray(tray_handles);
-            controller.sync_tray(app.handle());
-
-            let active_hotkey =
-                register_runtime_hotkey(app, &config.hotkey_key).map_err(tauri::Error::from)?;
-            info!("registered runtime hotkey key '{}'", active_hotkey);
-
-            if let Some(window) = app.get_webview_window("main") {
-                if let Err(err) = window.hide() {
-                    error!("failed to hide main window on startup: {err}");
-                }
-            }
-
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                if let Err(err) = window.hide() {
-                    error!("failed to hide window on close request: {err}");
-                }
-            }
-        })
-        .invoke_handler(tauri::generate_handler![
-            greet,
-            runtime_bus_emit,
-            runtime_snapshot,
-            set_autostart,
-            get_config,
-            update_config
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{transition, RuntimeEvent, RuntimeState};
-
-    #[test]
-    fn valid_flow_idle_recording_processing_idle() {
-        let s1 = transition(RuntimeState::Idle, RuntimeEvent::HotkeyToggle).unwrap();
-        let s2 = transition(s1, RuntimeEvent::HotkeyRelease).unwrap();
-        let s3 = transition(s2, RuntimeEvent::ProcessComplete).unwrap();
-        assert_eq!(s3, RuntimeState::Idle);
-    }
-
-    #[test]
-    fn invalid_transition_is_rejected() {
-        let result = transition(RuntimeState::Idle, RuntimeEvent::ProcessComplete);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn failure_always_enters_error_and_can_recover() {
-        let errored = transition(RuntimeState::Recording, RuntimeEvent::RuntimeFailure).unwrap();
-        assert_eq!(errored, RuntimeState::Error);
-        let recovered = transition(errored, RuntimeEvent::ResetError).unwrap();
-        assert_eq!(recovered, RuntimeState::Idle);
-    }
+pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
+    let float_window_url = tauri::WebviewUrl::App("index.html".into());
+    let window = tauri::WebviewWindowBuilder::new(app, "float", float_window_url)
+        .resizable(false)
+        .closable(false)
+        .focused(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 64))
+        .shadow(false)
+        .decorations(false)
+        .always_on_top(true)
+        // .visible(false)
+        .skip_taskbar(true)
+        .build()
+        .expect("failed to create window");
+    window
 }

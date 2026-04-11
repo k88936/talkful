@@ -1,52 +1,43 @@
-mod implement;
+mod dotfile_config_store;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct WindowConfig {
-    #[serde(default)]
-    theme: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TalkfulConfig {
+pub struct AppConfig {
+    pub asr_model_filename: String,
+    pub asr_token_filename: String,
     pub autostart_enabled: bool,
     pub hotkey_key: String,
-    window: WindowConfig,
 }
-pub struct ConfigStore {
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            asr_model_filename: "model.int8.onnx".into(),
+            asr_token_filename: "tokens.txt".into(),
+            autostart_enabled: false,
+            hotkey_key: "f8".into(),
+        }
+    }
+}
+pub struct DotfileConfigStore {
     path: PathBuf,
-    config: Mutex<TalkfulConfig>,
-}
-
-impl ConfigStore {
-    pub fn load() -> anyhow::Result<Self> {
-        <Self as IConfigStore>::load()
-    }
-
-    pub fn get(&self) -> anyhow::Result<TalkfulConfig> {
-        <Self as IConfigStore>::get(self)
-    }
-
-    pub fn update(&self, new_config: TalkfulConfig) -> anyhow::Result<TalkfulConfig> {
-        <Self as IConfigStore>::update(self, new_config)
-    }
-
-    pub fn set_autostart(&self, enabled: bool) -> anyhow::Result<()> {
-        <Self as IConfigStore>::set_autostart(self, enabled)
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
+    config: Mutex<AppConfig>,
 }
 
 pub trait IConfigStore {
-    fn load() -> anyhow::Result<Self>
-    where
-        Self: Sized;
-    fn get(&self) -> anyhow::Result<TalkfulConfig>;
-    fn update(&self, new_config: TalkfulConfig) -> anyhow::Result<TalkfulConfig>;
-    fn set_autostart(&self, enabled: bool) -> anyhow::Result<()>;
+    fn get(&self) -> AppConfig;
+    fn set(&self, new_config: AppConfig) -> anyhow::Result<AppConfig>;
+}
+
+pub fn get_base_path() -> PathBuf {
+    #[cfg(not(windows))]
+    let base = std::env::var("HOME").unwrap();
+    #[cfg(windows)]
+    let base = std::env::var("USERPROFILE").unwrap();
+
+    #[cfg(feature = "local_data_dir")]
+    let base = ".";
+
+    PathBuf::from(base).join(".talkful")
 }

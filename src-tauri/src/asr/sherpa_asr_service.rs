@@ -1,4 +1,4 @@
-use crate::asr::ASRService;
+use crate::asr::{get_model_base_path, ASRService};
 use crate::record::RecordResult;
 use anyhow::Error;
 use sherpa_rs::paraformer::{ParaformerConfig, ParaformerRecognizer};
@@ -8,10 +8,11 @@ pub struct SherpaASRService {
 }
 
 impl SherpaASRService {
-    pub fn new(model: Option<&str>, tokens: Option<&str>) -> anyhow::Result<Self> {
+    pub fn new(model: &str, tokens: &str) -> anyhow::Result<Self> {
+        let base_path = get_model_base_path();
         let config = ParaformerConfig {
-            model: model.unwrap_or("models/asr/model.int8.onnx").into(),
-            tokens: tokens.unwrap_or("models/asr/tokens.txt").into(),
+            model: base_path.join(model).to_str().unwrap().into(),
+            tokens: base_path.join(tokens).to_str().unwrap().into(),
             num_threads: Some(8),
             ..Default::default()
         };
@@ -21,10 +22,9 @@ impl SherpaASRService {
 }
 
 impl ASRService for SherpaASRService {
-    fn asr(&mut self, sample: RecordResult) -> anyhow::Result<String, Error> {
-        Ok(self
-            .recognizer
+    fn asr(&mut self, sample: RecordResult) -> String {
+        self.recognizer
             .transcribe(sample.sample_rate, &sample.samples)
-            .text)
+            .text
     }
 }

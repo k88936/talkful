@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let (signal_tx, signal_rx) = tokio::sync::oneshot::channel();
     let duration = Duration::from_secs(RECORD_DURATION_SECONDS);
-    let mut ASR = SherpaASRService::new(None, None)?;
+    let mut ASR = SherpaASRService::new("model.int8.onnx", "tokens.txt")?;
     thread::spawn(move || {
         thread::sleep(duration);
         signal_tx
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let recorder = CPALRecordService::new();
     let recorded = recorder.record(signal_rx).await?;
-    let result = ASR.asr(recorded)?;
+    let result = ASR.asr(recorded);
     println!("recognized: {result}");
 
     Ok(())

@@ -11,6 +11,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+local_data_dir= []
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
@@ -26,7 +29,5 @@ cpal = "0.16.0"
 anyhow = "1.0.102"
 sherpa-rs = "0.6.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-llama-cpp-2 = "0.1.143"
-encoding_rs = "0.8.35"
 enigo = "0.6.1"
 [dev-dependencies]
