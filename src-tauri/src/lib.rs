@@ -131,6 +131,7 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
         .title("talkful")
         .build()?;
     // float widget
+    
     build_float_window(app.handle());
 
     Ok(())
@@ -147,7 +148,7 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .shadow(false)
         .decorations(false)
         .always_on_top(true)
-        // .visible(false)
+        .visible(false)
         .skip_taskbar(true)
         .build()
         .expect("failed to create window");

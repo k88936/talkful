@@ -8,7 +8,7 @@ use talkful_lib::record::cpal_record_service::CPALRecordService;
 use talkful_lib::record::{RecordService, RecordSignal};
 
 const OUTPUT_FILE_NAME: &str = "/tmp/record_example.wav";
-const RECORD_DURATION_SECONDS: u64 = 2;
+const RECORD_DURATION_SECONDS: u64 = 8;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
