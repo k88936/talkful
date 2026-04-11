@@ -50,7 +50,7 @@ pub fn on_record_started(app: &AppHandle) {
 
     let (signal_tx, signal_rx) = oneshot::channel();
     let handle_cpy = app.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let services = handle_cpy.state::<AppServices>().inner();
         workflow(services, signal_rx).await;
         // hide the window afterward
