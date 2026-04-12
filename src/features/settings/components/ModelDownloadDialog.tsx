@@ -4,9 +4,10 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import DropdownMenu from '@jetbrains/ring-ui-built/components/dropdown-menu/dropdown-menu';
 import Group from '@jetbrains/ring-ui-built/components/group/group';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, {Size} from '@jetbrains/ring-ui-built/components/input/input';
 import Island, {Content, Header} from '@jetbrains/ring-ui-built/components/island/island';
 import List from '@jetbrains/ring-ui-built/components/list/list';
+import {type ListDataItem} from '@jetbrains/ring-ui-built/components/list/consts';
 import Panel from '@jetbrains/ring-ui-built/components/panel/panel';
 import PopupMenu from '@jetbrains/ring-ui-built/components/popup-menu/popup-menu';
 import Text from '@jetbrains/ring-ui-built/components/text/text';
@@ -75,6 +76,36 @@ export const ModelDownloadDialog = ({show, onClose}: ModelDownloadDialogProps) =
 
     const selectedSourceLabel = `${selectedSourceOption.model}: ${selectedSourceOption.source}`;
 
+    const filesListData = useMemo<ListDataItem[]>(() => {
+        const listData: ListDataItem[] = [
+            {
+                key: 'files-group-title',
+                rgItemType: List.ListProps.Type.TITLE,
+                label: `Model: ${selectedSourceOption.model}`,
+                description: `Source: ${selectedSourceOption.source}`,
+            },
+        ];
+
+        selectedSourceOption.files.forEach((file, index) => {
+            if (index > 0) {
+                listData.push({
+                    key: `file-separator-${index}`,
+                    rgItemType: List.ListProps.Type.SEPARATOR,
+                });
+            }
+
+            listData.push({
+                key: `file-item-${index}-${file.local_file_name}`,
+                rgItemType: List.ListProps.Type.ITEM,
+                label: file.local_file_name,
+                description: file.description,
+                details: file.url,
+            });
+        });
+
+        return listData;
+    }, [selectedSourceOption]);
+
     const handleDownload = async (): Promise<void> => {
         setIsDownloading(true);
         setDownloadError(null);
@@ -114,10 +145,11 @@ export const ModelDownloadDialog = ({show, onClose}: ModelDownloadDialogProps) =
             show={show}
             onCloseAttempt={handleCloseAttempt}
             trapFocus
+            className="flex-1"
             autoFocusFirst
             showCloseButton
         >
-            <Island className="w-[34rem] max-w-full">
+            <Island className="max-w-full">
                 <Header border>Download ASR model files</Header>
                 <Content>
                     <Group className="flex w-full flex-col gap-3">
@@ -153,16 +185,16 @@ export const ModelDownloadDialog = ({show, onClose}: ModelDownloadDialogProps) =
                         <Text>
                             Files to download:
                         </Text>
-                        {selectedSourceOption.files.map(file => (
-                            <Group key={`${file.local_file_name}:${file.url}`} className="flex w-full flex-col gap-1">
-                                <Text size={Text.Size.S}>
-                                    {file.description}: {file.url}
-                                </Text>
-                            </Group>
-                        ))}
+                        <List
+                            data={filesListData}
+                            onResize={() => {}}
+                            renderOptimization={false}
+                            shortcuts
+                        />
                         <Input
                             label="HTTP proxy URL (optional)"
                             value={httpProxyUrl}
+                            size={Size.L}
                             help="Use protocol://host:port, for example http://host:port, and auth form http://user:pass@host:port. Leave empty for direct download."
                             onChange={event => setHttpProxyUrl(event.currentTarget.value)}
                         />
