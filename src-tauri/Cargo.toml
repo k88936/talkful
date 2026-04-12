@@ -24,10 +24,14 @@ tauri-plugin-global-shortcut = "2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
-
 cpal = "0.16.0"
 anyhow = "1.0.102"
 sherpa-rs = "0.6.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 enigo = "0.6.1"
+tauri-plugin-fs = "2"
+tauri-plugin-process = "2"
 [dev-dependencies]
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"

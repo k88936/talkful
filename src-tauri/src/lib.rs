@@ -12,6 +12,7 @@ use anyhow::Result;
 use enigo::{Enigo, Keyboard, Settings};
 use tauri::window::Color;
 use tauri::{App, AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut};
 use tokio::sync::oneshot;
 
@@ -133,6 +134,16 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
     // float widget
 
     build_float_window(app.handle());
+
+    let autostart_manager = app.app_handle().autolaunch();
+    match config.autostart_enabled {
+        true => {
+            autostart_manager.enable().expect("enable autostart");
+        }
+        false => {
+            autostart_manager.disable().expect("disable autostart");
+        }
+    }
 
     Ok(())
 }

@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::Mutex;
 
+use crate::config;
 use crate::config::{AppConfig, DotfileConfigStore, IConfigStore};
 use anyhow::{Context, Result};
-use crate::config;
 
 impl DotfileConfigStore {
     pub(crate) fn new() -> Result<Self> {
@@ -14,7 +14,6 @@ impl DotfileConfigStore {
             config: Mutex::new(config),
         })
     }
-
 }
 impl IConfigStore for DotfileConfigStore {
     fn get(&self) -> AppConfig {

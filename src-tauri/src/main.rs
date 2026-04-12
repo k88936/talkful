@@ -2,13 +2,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::{error, info};
-use talkful_lib::{on_record_ended, on_record_started, initialize};
+use talkful_lib::{initialize, on_record_ended, on_record_started};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _key, event| match event.state {

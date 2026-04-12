@@ -13,8 +13,8 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            asr_model_filename: "model.int8.onnx".into(),
-            asr_token_filename: "tokens.txt".into(),
+            asr_model_filename: "paraformer-offline.model.int8.onnx".into(),
+            asr_token_filename: "paraformer-offline.tokens.txt".into(),
             autostart_enabled: false,
             hotkey_key: "f8".into(),
         }
