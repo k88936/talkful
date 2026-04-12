@@ -9,10 +9,11 @@ pub fn get_settings(config_store: State<'_, DotfileConfigStore>) -> AppConfig {
 
 #[tauri::command]
 pub fn set_settings(
-    new_config: AppConfig,
+    new_config: Option<AppConfig>,
     config_store: State<'_, DotfileConfigStore>,
 ) -> Result<AppConfig, String> {
     config_store
-        .set(new_config)
+        .set(new_config.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
+

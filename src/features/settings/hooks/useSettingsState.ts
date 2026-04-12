@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useState} from 'react';
 
-import {getSettings, setSettings} from '@/features/settings/api/settings-client.ts';
+import {getSettings, setSettings} from '@/features/settings/api/settings.ts';
 import {AppSettings, fromAppSettingsDto, toAppSettingsDto} from '@/features/settings/model/settings.ts';
 
 interface UseSettingsStateResult {
@@ -9,6 +9,7 @@ interface UseSettingsStateResult {
     isSaving: boolean;
     error: Error | null;
     updateSettings: (next: AppSettings) => void;
+    resetSettingsToDefaults: () => void;
     saveSettings: () => Promise<void>;
 }
 
@@ -50,6 +51,20 @@ export const useSettingsState = (): UseSettingsStateResult => {
         setSettingsState(next);
     }, []);
 
+    const resetSettingsToDefaults = useCallback(() => {
+        setIsSaving(true);
+        void setSettings(null)
+            .then(persisted => {
+                setSettingsState(fromAppSettingsDto(persisted));
+            })
+            .catch(reason => {
+                setError(toError(reason));
+            })
+            .finally(() => {
+                setIsSaving(false);
+            });
+    }, []);
+
     const saveSettings = useCallback(async () => {
         if (settings === null) {
             throw new Error('settings state is not initialized');
@@ -60,7 +75,9 @@ export const useSettingsState = (): UseSettingsStateResult => {
             const persisted = await setSettings(toAppSettingsDto(settings));
             setSettingsState(fromAppSettingsDto(persisted));
         } catch (reason: unknown) {
-            setError(toError(reason));
+            const error = toError(reason);
+            setError(error);
+            throw error;
         } finally {
             setIsSaving(false);
         }
@@ -72,6 +89,7 @@ export const useSettingsState = (): UseSettingsStateResult => {
         isSaving,
         error,
         updateSettings,
+        resetSettingsToDefaults,
         saveSettings,
     };
 };

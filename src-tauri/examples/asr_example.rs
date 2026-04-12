@@ -12,7 +12,7 @@ const PCM_AUDIO_FORMAT: u16 = 1;
 
 fn main() -> Result<()> {
     let sample = read_pcm16_mono_wav(INPUT_FILE_NAME)?;
-    let mut asr = SherpaASRService::new("model.int8.onnx", "tokens.txt")?;
+    let mut asr = SherpaASRService::new()?;
     let result = asr.asr(sample);
     println!("recognized: {result}");
     Ok(())

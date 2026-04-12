@@ -8,7 +8,7 @@ import {StatisticsPage} from "@/pages/statistics/StatisticsPage.tsx";
 const AppRoutes = () => {
     return (
         <Routes>
-            <Route path="/" element={<Navigate to="/statistics" replace/>}/>
+            <Route path="/" element={<Navigate to="/settings" replace/>}/>
             <Route path="/statistics" element={<StatisticsPage/>}/>
             <Route path="/settings" element={<SettingsPage/>}/>
         </Routes>

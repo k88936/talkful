@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let (signal_tx, signal_rx) = tokio::sync::oneshot::channel();
     let duration = Duration::from_secs(RECORD_DURATION_SECONDS);
-    let mut ASR = SherpaASRService::new("model.int8.onnx", "tokens.txt")?;
+    let mut ASR = SherpaASRService::new()?;
     thread::spawn(move || {
         thread::sleep(duration);
         signal_tx

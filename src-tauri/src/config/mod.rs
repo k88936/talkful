@@ -5,16 +5,12 @@ use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub asr_model_filename: String,
-    pub asr_token_filename: String,
     pub autostart_enabled: bool,
     pub hotkey_key: String,
 }
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            asr_model_filename: "paraformer-offline.model.int8.onnx".into(),
-            asr_token_filename: "paraformer-offline.tokens.txt".into(),
             autostart_enabled: false,
             hotkey_key: "f8".into(),
         }

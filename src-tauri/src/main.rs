@@ -9,6 +9,7 @@ use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use commands::settings::{get_settings, set_settings};
+use crate::commands::asr::{download_model_files, get_model_directory_path};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -54,7 +55,12 @@ async fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![get_settings, set_settings])
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            set_settings,
+            get_model_directory_path,
+            download_model_files
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

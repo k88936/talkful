@@ -108,8 +108,7 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.manage(config_store);
 
     // TODO accept the error, allowing user correct config in the web ui.
-    let asr = SherpaASRService::new(&config.asr_model_filename, &config.asr_token_filename)
-        .expect("should init asr service");
+    let asr = SherpaASRService::new().expect("should init asr service");
     let recorder = CPALRecordService::new();
 
     let services = AppServices {

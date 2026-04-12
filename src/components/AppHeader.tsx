@@ -27,7 +27,7 @@ export const AppHeader = () => {
                 <HeaderIcon
                     icon={analyticsIcon}
                     title="statistics"
-                    active={false}
+                    active={isActive('/statistics')}
                     onClick={() => navigate('/statistics')}
                 />
                 <HeaderIcon
