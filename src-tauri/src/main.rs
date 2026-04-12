@@ -1,10 +1,14 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod commands;
+
 use log::{error, info};
 use talkful_lib::{initialize, on_record_ended, on_record_started};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
+
+use commands::settings::{get_settings, set_settings};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -50,7 +54,7 @@ async fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![])
+        .invoke_handler(tauri::generate_handler![get_settings, set_settings])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -20,15 +20,15 @@ export const AppHeader = () => {
     return (
         <Header
             vertical>
-            <Link href="/" className="items-center no-underline">
+            <Link className="items-center no-underline">
                 <Logo glyph={LOGO} color={Color.MAGENTA}/>
             </Link>
             <Links>
                 <HeaderIcon
                     icon={analyticsIcon}
-                    title="analytics"
-                    active={isActive('/queue')}
-                    onClick={() => navigate('/queue')}
+                    title="statistics"
+                    active={false}
+                    onClick={() => navigate('/statistics')}
                 />
                 <HeaderIcon
                     icon={settingsIcon}
@@ -39,10 +39,12 @@ export const AppHeader = () => {
             </Links>
             <Tray>
                 <HeaderIcon
+                    active={false}
                     icon={bellIcon}
                     title="Notifications"
                 />
                 <HeaderIcon
+                    active={false}
                     icon={helpIcon}
                     title="Help"
                 />

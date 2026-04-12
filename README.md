@@ -1,7 +1,10 @@
-# Tauri + React + Typescript
+# Talkful
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+a lightweight offline voice input method, made out of hobby.
 
-## Recommended IDE Setup
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## Tech stack
+* UI/UX: tauri + react + ringui
+* voice record: cpal
+* asr: sherpa-onnx + paraformer (model)
+* text inject: enigo
