@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "node scripts/tauri.mjs"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@jetbrains/icons": "^5.19.0",
