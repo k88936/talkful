@@ -10,6 +10,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 use commands::settings::{get_settings, set_settings};
 use crate::commands::asr::{download_model_files, get_model_directory_path};
+use crate::commands::system_errors::get_startup_errors;
 
 fn emit_error_to_main_window(app: &tauri::AppHandle, message: String) {
     let window = app
@@ -71,7 +72,8 @@ async fn main() {
             get_settings,
             set_settings,
             get_model_directory_path,
-            download_model_files
+            download_model_files,
+            get_startup_errors
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

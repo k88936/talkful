@@ -1,6 +1,7 @@
 import {listen} from '@tauri-apps/api/event';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
+import {getStartupErrors} from '@/features/system-errors/api/startup-errors.ts';
 import {ErrorBannerItem} from '@/features/system-errors/model/error-banner.ts';
 
 interface UseErrorEventBannersResult {
@@ -12,6 +13,12 @@ export const useErrorEventBanners = (): UseErrorEventBannersResult => {
     const [errors, setErrors] = useState<ErrorBannerItem[]>([]);
     const nextId = useRef(0);
 
+    const appendError = useCallback((message: string) => {
+        const id = nextId.current;
+        nextId.current += 1;
+        setErrors(previous => [...previous, {id, message}]);
+    }, []);
+
     const dismissError = useCallback((id: number) => {
         setErrors(previous => previous.filter(error => error.id !== id));
     }, []);
@@ -21,15 +28,33 @@ export const useErrorEventBanners = (): UseErrorEventBannersResult => {
         let unlisten: (() => void) | null = null;
 
         void listen<string>('error', event => {
-            const id = nextId.current;
-            nextId.current += 1;
-            setErrors(previous => [...previous, {id, message: event.payload}]);
+            appendError(event.payload);
         }).then(handler => {
             if (!isActive) {
                 handler();
                 return;
             }
             unlisten = handler;
+        }).catch(reason => {
+            if (!isActive) {
+                return;
+            }
+            const message = reason instanceof Error ? reason.message : String(reason);
+            appendError(`failed to listen for error events: ${message}`);
+        });
+
+        void getStartupErrors().then(messages => {
+            console.log("take")
+            if (!isActive) {
+                return;
+            }
+            messages.forEach(appendError);
+        }).catch(reason => {
+            if (!isActive) {
+                return;
+            }
+            const message = reason instanceof Error ? reason.message : String(reason);
+            appendError(`failed to read startup errors: ${message}`);
         });
 
         return () => {
@@ -38,7 +63,7 @@ export const useErrorEventBanners = (): UseErrorEventBannersResult => {
                 unlisten();
             }
         };
-    }, []);
+    }, [appendError]);
 
     return {
         errors,

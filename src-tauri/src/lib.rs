@@ -28,6 +28,27 @@ pub struct AppState {
     record_signal_tx: Mutex<Option<oneshot::Sender<RecordSignal>>>,
 }
 
+#[derive(Default)]
+pub struct StartupErrorState {
+    messages: Mutex<Vec<String>>,
+}
+
+impl StartupErrorState {
+    pub fn push(&self, message: String) {
+        self.messages
+            .lock()
+            .expect("StartupErrorState.messages poisoned")
+            .push(message);
+    }
+
+    pub fn all(&self) -> Vec<String> {
+        self.messages
+            .lock()
+            .expect("StartupErrorState.messages poisoned")
+            .clone()
+    }
+}
+
 pub fn on_record_started(app: &AppHandle) -> Result<()> {
     // show the float window in the focused monitor
     let cursor_pos = app.cursor_position().context("failed to get cursor position")?;
@@ -149,11 +170,12 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
+    app.manage(StartupErrorState::default());
     build_main_window(app.handle());
     build_float_window(app.handle());
 
-    if let Err(e) = init_services(app.handle()){
-        app.emit("error", format!("{:#}", e)).expect("emit message error");
+    if let Err(e) = init_services(app.handle()) {
+        app.state::<StartupErrorState>().push(format!("{:#}", e));
     }
     Ok(())
 }
