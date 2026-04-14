@@ -1,20 +1,19 @@
-use crate::asr::{get_model_base_path, ASRService};
+use crate::asr::{get_model_base_path, ASRProcessor};
 use crate::record::RecordResult;
 use sherpa_onnx::{
     OfflineParaformerModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
 };
 use std::convert::TryFrom;
-use std::sync::Arc;
 use anyhow::Context;
 
 const ASR_MODEL_FILENAME: &str = "paraformer-offline.model.int8.onnx";
 const ASR_TOKEN_FILENAME: &str = "paraformer-offline.tokens.txt";
 
-pub struct SherpaASRService {
+pub struct SherpaASRProcessor {
     recognizer:OfflineRecognizer,
 }
 
-impl SherpaASRService {
+impl SherpaASRProcessor {
     pub fn new() -> anyhow::Result<Self> {
         let base_path = get_model_base_path();
         let mut config = OfflineRecognizerConfig::default();
@@ -44,7 +43,7 @@ impl SherpaASRService {
     }
 }
 
-impl ASRService for SherpaASRService {
+impl ASRProcessor for SherpaASRProcessor {
     fn asr(&mut self, sample: RecordResult) -> String {
         let stream = self.recognizer.create_stream();
         let sample_rate = i32::try_from(sample.sample_rate).expect("sample rate exceeds i32 range");

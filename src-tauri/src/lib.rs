@@ -4,8 +4,10 @@ use std::sync::Mutex;
 pub mod asr;
 pub mod config;
 pub mod record;
-use crate::asr::sherpa_asr_service::SherpaASRService;
-use crate::asr::ASRService;
+mod shared;
+
+use asr::ASRService;
+use crate::asr::sherpa_asr_processor::SherpaASRProcessor;
 use crate::config::{DotfileConfigStore, IConfigStore};
 use crate::record::cpal_record_service::CPALRecordService;
 use crate::record::{RecordService, RecordSignal};
@@ -19,7 +21,7 @@ use tokio::sync::oneshot;
 pub type AppConfigStore = DotfileConfigStore;
 
 pub struct AppServices {
-    asr_service: Mutex<SherpaASRService>,
+    asr_client: ASRService,
     record_service: CPALRecordService,
 }
 pub struct AppState {
@@ -85,12 +87,21 @@ async fn workflow(app: &AppHandle, signal: oneshot::Receiver<RecordSignal>) -> R
     let services = app
         .try_state::<AppServices>()
         .context("app services not initialized")?;
-    if let Ok(recorded) = services.record_service.record(signal).await {
-        let result = services.asr_service.lock().expect("poisoned").asr(recorded);
+    let recorded = services
+        .inner()
+        .record_service
+        .record(signal)
+        .await
+        .context("recording failed")?;
+    let result = services
+        .inner()
+        .asr_client
+        .transcribe(recorded)
+        .await
+        .context("asr transcription failed")?;
 
-        let mut enigo = Enigo::new(&Settings::default()).unwrap();
-        enigo.text(&result).expect("should inject text");
-    }
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+    enigo.text(&result).expect("should inject text");
     Ok(())
 }
 pub fn on_record_ended(app: &AppHandle) -> Result<()> {
@@ -118,11 +129,11 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
     let config = config_store.get();
     app.manage(config_store);
 
-    let asr = SherpaASRService::new()?;
+    let asr_client = ASRService::new(SherpaASRProcessor::new)?;
     let recorder = CPALRecordService::new();
 
     let services = AppServices {
-        asr_service: Mutex::new(asr),
+        asr_client,
         record_service: recorder,
     };
     app.manage(services);

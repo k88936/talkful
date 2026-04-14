@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::thread;
 use std::time::Duration;
-use talkful_lib::asr::sherpa_asr_service::SherpaASRService;
-use talkful_lib::asr::ASRService;
+use talkful_lib::asr::sherpa_asr_processor::SherpaASRProcessor;
+use talkful_lib::asr::ASRProcessor;
 use talkful_lib::record::cpal_record_service::CPALRecordService;
 use talkful_lib::record::{RecordService, RecordSignal};
 
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let (signal_tx, signal_rx) = tokio::sync::oneshot::channel();
     let duration = Duration::from_secs(RECORD_DURATION_SECONDS);
-    let mut ASR = SherpaASRService::new()?;
+    let mut ASR = SherpaASRProcessor::new()?;
     thread::spawn(move || {
         thread::sleep(duration);
         signal_tx

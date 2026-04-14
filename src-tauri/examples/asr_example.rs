@@ -1,8 +1,8 @@
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
-use talkful_lib::asr::sherpa_asr_service::SherpaASRService;
-use talkful_lib::asr::ASRService;
+use talkful_lib::asr::sherpa_asr_processor::SherpaASRProcessor;
+use talkful_lib::asr::ASRProcessor;
 use talkful_lib::record::RecordResult;
 
 const INPUT_FILE_NAME: &str = "/tmp/record_example.wav";
@@ -12,7 +12,7 @@ const PCM_AUDIO_FORMAT: u16 = 1;
 
 fn main() -> Result<()> {
     let sample = read_pcm16_mono_wav(INPUT_FILE_NAME)?;
-    let mut asr = SherpaASRService::new()?;
+    let mut asr = SherpaASRProcessor::new()?;
     let result = asr.asr(sample);
     println!("recognized: {result}");
     Ok(())
