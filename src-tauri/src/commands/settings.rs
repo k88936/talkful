@@ -16,4 +16,3 @@ pub fn set_settings(
         .set(new_config.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
-

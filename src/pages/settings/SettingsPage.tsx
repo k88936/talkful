@@ -48,7 +48,7 @@ export const SettingsPage = () => {
             <Content>
                 <Group className="flex w-full flex-col gap-4">
                     <Text>
-                        Configure startup mode and hotkey persistence.
+                        Configure autostart and hotkey persistence.
                     </Text>
                     <SettingsForm
                         settings={settings}

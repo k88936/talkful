@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useState} from 'react';
 
+import {getAutostartEnabled, setAutostartEnabled} from '@/features/settings/api/autostart.ts';
 import {getSettings, setSettings} from '@/features/settings/api/settings.ts';
 import {AppSettings, fromAppSettingsDto, toAppSettingsDto} from '@/features/settings/model/settings.ts';
 
@@ -28,12 +29,12 @@ export const useSettingsState = (): UseSettingsStateResult => {
     useEffect(() => {
         let isMounted = true;
 
-        void getSettings()
-            .then(dto => {
+        void Promise.all([getSettings(), getAutostartEnabled()])
+            .then(([dto, autostartEnabled]) => {
                 if (!isMounted) {
                     return;
                 }
-                setSettingsState(fromAppSettingsDto(dto));
+                setSettingsState(fromAppSettingsDto(dto, autostartEnabled));
             })
             .catch(reason => {
                 if (!isMounted) {
@@ -53,16 +54,17 @@ export const useSettingsState = (): UseSettingsStateResult => {
 
     const resetSettingsToDefaults = useCallback(() => {
         setIsSaving(true);
-        void setSettings(null)
-            .then(persisted => {
-                setSettingsState(fromAppSettingsDto(persisted));
-            })
-            .catch(reason => {
+        void (async () => {
+            try {
+                const [persisted] = await Promise.all([setSettings(null), setAutostartEnabled(false)]);
+                const autostartEnabled = await getAutostartEnabled();
+                setSettingsState(fromAppSettingsDto(persisted, autostartEnabled));
+            } catch (reason: unknown) {
                 setError(toError(reason));
-            })
-            .finally(() => {
+            } finally {
                 setIsSaving(false);
-            });
+            }
+        })();
     }, []);
 
     const saveSettings = useCallback(async () => {
@@ -73,7 +75,9 @@ export const useSettingsState = (): UseSettingsStateResult => {
         setIsSaving(true);
         try {
             const persisted = await setSettings(toAppSettingsDto(settings));
-            setSettingsState(fromAppSettingsDto(persisted));
+            await setAutostartEnabled(settings.autostartEnabled);
+            const autostartEnabled = await getAutostartEnabled();
+            setSettingsState(fromAppSettingsDto(persisted, autostartEnabled));
         } catch (reason: unknown) {
             const error = toError(reason);
             setError(error);

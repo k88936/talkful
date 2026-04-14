@@ -62,7 +62,7 @@ export const SettingsForm = ({
                     </Button>
                 </Panel>
                 <Text size={Text.Size.S} info>
-                    Changes are saved immediately and applied after app restart.
+                    Hotkey changes apply after app restart. Autostart is applied when you save.
                 </Text>
             </Group>
         </form>

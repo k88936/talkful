@@ -5,14 +5,12 @@ use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub autostart_enabled: bool,
     pub hotkey_key: String,
 }
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            autostart_enabled: false,
-            hotkey_key: "f8".into(),
+            hotkey_key: "F8".into(),
         }
     }
 }

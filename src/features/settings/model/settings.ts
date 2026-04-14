@@ -1,5 +1,4 @@
 export interface AppSettingsDto {
-    autostart_enabled: boolean;
     hotkey_key: string;
 }
 
@@ -8,16 +7,15 @@ export interface AppSettings {
     hotkeyKey: string;
 }
 
-export const fromAppSettingsDto = (dto: AppSettingsDto): AppSettings => {
+export const fromAppSettingsDto = (dto: AppSettingsDto, autostartEnabled: boolean): AppSettings => {
     return {
-        autostartEnabled: dto.autostart_enabled,
+        autostartEnabled,
         hotkeyKey: dto.hotkey_key,
     };
 };
 
 export const toAppSettingsDto = (settings: AppSettings): AppSettingsDto => {
     return {
-        autostart_enabled: settings.autostartEnabled,
         hotkey_key: settings.hotkeyKey,
     };
 };
