@@ -4,12 +4,14 @@ use sherpa_onnx::{
     OfflineParaformerModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
 };
 use std::convert::TryFrom;
+use std::sync::Arc;
+use anyhow::Context;
 
 const ASR_MODEL_FILENAME: &str = "paraformer-offline.model.int8.onnx";
 const ASR_TOKEN_FILENAME: &str = "paraformer-offline.tokens.txt";
 
 pub struct SherpaASRService {
-    recognizer_config: OfflineRecognizerConfig,
+    recognizer:Arc<OfflineRecognizer>,
 }
 
 impl SherpaASRService {
@@ -34,20 +36,20 @@ impl SherpaASRService {
         );
         config.model_config.num_threads = 8;
 
+        let recognizer = OfflineRecognizer::create(&config)
+            .context("failed to create sherpa-onnx recognizer")?;
         Ok(Self {
-            recognizer_config: config,
+            recognizer: Arc::new(recognizer)
         })
     }
 }
 
 impl ASRService for SherpaASRService {
     fn asr(&mut self, sample: RecordResult) -> String {
-        let recognizer = OfflineRecognizer::create(&self.recognizer_config)
-            .expect("failed to create sherpa-onnx recognizer");
-        let stream = recognizer.create_stream();
+        let stream = self.recognizer.create_stream();
         let sample_rate = i32::try_from(sample.sample_rate).expect("sample rate exceeds i32 range");
         stream.accept_waveform(sample_rate, &sample.samples);
-        recognizer.decode(&stream);
+        self.recognizer.decode(&stream);
         stream
             .get_result()
             .expect("sherpa-onnx did not return an ASR result")
