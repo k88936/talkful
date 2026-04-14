@@ -11,7 +11,7 @@ const ASR_MODEL_FILENAME: &str = "paraformer-offline.model.int8.onnx";
 const ASR_TOKEN_FILENAME: &str = "paraformer-offline.tokens.txt";
 
 pub struct SherpaASRService {
-    recognizer:Arc<OfflineRecognizer>,
+    recognizer:OfflineRecognizer,
 }
 
 impl SherpaASRService {
@@ -39,7 +39,7 @@ impl SherpaASRService {
         let recognizer = OfflineRecognizer::create(&config)
             .context("failed to create sherpa-onnx recognizer")?;
         Ok(Self {
-            recognizer: Arc::new(recognizer)
+            recognizer
         })
     }
 }
