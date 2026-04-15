@@ -4,7 +4,9 @@
 mod commands;
 
 use log::{error, info};
-use talkful_lib::{emit_error_to_main_window, initialize, on_record_ended, on_record_started};
+use talkful_lib::{
+    build_main_window, emit_error_to_main_window, initialize, on_record_ended, on_record_started,
+};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
@@ -47,9 +49,10 @@ async fn main() {
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             info!("secondary instance launch intercepted");
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-            }
+            let window = app
+                .get_webview_window("main")
+                .unwrap_or_else(|| build_main_window(app));
+            window.show().unwrap();
         }))
         .setup(initialize)
         .on_window_event(|window, event| {
