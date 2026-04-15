@@ -11,7 +11,7 @@ use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::commands::asr::{download_model_files, get_model_directory_path};
-use crate::commands::system_errors::get_startup_errors;
+use crate::commands::system_errors::get_log_errors;
 use commands::settings::{get_settings, set_settings};
 
 #[tokio::main(flavor = "current_thread")]
@@ -35,11 +35,6 @@ async fn main() {
                         }
                     }
                 })
-                .build(),
-        )
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
@@ -68,7 +63,7 @@ async fn main() {
             set_settings,
             get_model_directory_path,
             download_model_files,
-            get_startup_errors
+            get_log_errors
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

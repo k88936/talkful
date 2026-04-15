@@ -1,7 +1,7 @@
 import {listen} from '@tauri-apps/api/event';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
-import {getStartupErrors} from '@/features/system-errors/api/startup-errors.ts';
+import {getLogErrors} from '@/features/system-errors/api/log-errors.ts';
 import {ErrorBannerItem} from '@/features/system-errors/model/error-banner.ts';
 
 interface UseErrorEventBannersResult {
@@ -43,8 +43,7 @@ export const useErrorEventBanners = (): UseErrorEventBannersResult => {
             appendError(`failed to listen for error events: ${message}`);
         });
 
-        void getStartupErrors().then(messages => {
-            console.log("take")
+        void getLogErrors().then(messages => {
             if (!isActive) {
                 return;
             }
@@ -54,7 +53,7 @@ export const useErrorEventBanners = (): UseErrorEventBannersResult => {
                 return;
             }
             const message = reason instanceof Error ? reason.message : String(reason);
-            appendError(`failed to read startup errors: ${message}`);
+            appendError(`failed to read log errors: ${message}`);
         });
 
         return () => {

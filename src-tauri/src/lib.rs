@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 pub mod asr;
 pub mod config;
+pub mod logging;
 pub mod record;
 pub mod shared;
 
@@ -26,27 +27,6 @@ pub struct AppServices {
 }
 pub struct AppState {
     record_signal_tx: Mutex<Option<oneshot::Sender<RecordSignal>>>,
-}
-
-#[derive(Default)]
-pub struct StartupErrorState {
-    messages: Mutex<Vec<String>>,
-}
-
-impl StartupErrorState {
-    pub fn push(&self, message: String) {
-        self.messages
-            .lock()
-            .expect("StartupErrorState.messages poisoned")
-            .push(message);
-    }
-
-    pub fn all(&self) -> Vec<String> {
-        self.messages
-            .lock()
-            .expect("StartupErrorState.messages poisoned")
-            .clone()
-    }
 }
 
 pub fn on_record_started(app: &AppHandle) -> Result<()> {
@@ -149,11 +129,14 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
-    app.manage(StartupErrorState::default());
+    let log_state = logging::init_logger().map_err(|error| {
+        std::io::Error::other(format!("failed to initialize logger: {error:#}"))
+    })?;
+    app.manage(log_state);
     build_main_window(app.handle());
 
     if let Err(e) = init_services(app.handle()).context("init services failed") {
-        app.state::<StartupErrorState>().push(format!("{:#}", e));
+        log::error!("{:#}", e);
         emit_error_to_main_window(app.handle(), e.into())
     }
 
