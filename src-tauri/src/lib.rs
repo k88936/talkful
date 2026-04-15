@@ -6,12 +6,12 @@ pub mod config;
 pub mod record;
 mod shared;
 
-use asr::ASRService;
 use crate::asr::sherpa_asr_processor::SherpaASRProcessor;
 use crate::config::{DotfileConfigStore, IConfigStore};
 use crate::record::cpal_record_service::CPALRecordService;
 use crate::record::{RecordService, RecordSignal};
 use anyhow::{Context, Result};
+use asr::ASRService;
 use enigo::{Enigo, Keyboard, Settings};
 use tauri::window::Color;
 use tauri::{App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
@@ -51,7 +51,9 @@ impl StartupErrorState {
 
 pub fn on_record_started(app: &AppHandle) -> Result<()> {
     // show the float window in the focused monitor
-    let cursor_pos = app.cursor_position().context("failed to get cursor position")?;
+    let cursor_pos = app
+        .cursor_position()
+        .context("failed to get cursor position")?;
     let target_monitor = app
         .monitor_from_point(cursor_pos.x, cursor_pos.y)
         .context("failed to resolve monitor for cursor position")?
@@ -69,8 +71,7 @@ pub fn on_record_started(app: &AppHandle) -> Result<()> {
         // recreate if fail
         .unwrap_or_else(|| build_float_window(app));
     // set pos and size
-    window
-        .set_size(PhysicalSize::new(window_width, window_height))?;
+    window.set_size(PhysicalSize::new(window_width, window_height))?;
     window.set_position(PhysicalPosition::new(x, y))?;
     window.show()?;
 
@@ -145,7 +146,6 @@ pub fn on_record_ended(app: &AppHandle) -> Result<()> {
 }
 
 pub fn init_services(app: &AppHandle) -> Result<()> {
-
     let config_store = DotfileConfigStore::new()?;
     let config = config_store.get();
     app.manage(config_store);
@@ -165,8 +165,7 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
     app.manage(state);
 
     let code = Code::from_str(&config.hotkey_key)?;
-    app.global_shortcut()
-        .register(Shortcut::new(None, code))?;
+    app.global_shortcut().register(Shortcut::new(None, code))?;
     Ok(())
 }
 pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -175,7 +174,8 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
     build_float_window(app.handle());
 
     if let Err(e) = init_services(app.handle()) {
-        app.state::<StartupErrorState>().push(format!("{:#}", e));
+        app.state::<StartupErrorState>().push(format!("{:?}", e));
+        emit_error_to_main_window(app.handle(), format!("{:?}", e))
     }
     Ok(())
 }
@@ -206,4 +206,12 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .build()
         .expect("failed to create window");
     window
+}
+
+pub fn emit_error_to_main_window(app: &tauri::AppHandle, message: String) {
+    let window = app
+        .get_webview_window("main")
+        .unwrap_or_else(|| build_main_window(app));
+    window.show().expect("show main window");
+    window.emit("error", message).expect("emit message error");
 }
