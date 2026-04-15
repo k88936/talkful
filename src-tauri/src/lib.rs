@@ -79,9 +79,7 @@ pub fn on_record_started(app: &AppHandle) -> Result<()> {
     let handle_cpy = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = workflow(&handle_cpy, signal_rx).await {
-            handle_cpy
-                .emit("error", format!("{:#}", error))
-                .expect("emit message error");
+            emit_error_to_main_window(&handle_cpy, error.into_boxed_dyn_error());
         }
         // hide the window afterward
         if let Some(window) = handle_cpy.get_webview_window("float") {
@@ -173,9 +171,9 @@ pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
     build_main_window(app.handle());
     build_float_window(app.handle());
 
-    if let Err(e) = init_services(app.handle()) {
-        app.state::<StartupErrorState>().push(format!("{:?}", e));
-        emit_error_to_main_window(app.handle(), format!("{:?}", e))
+    if let Err(e) = init_services(app.handle()).context("init services failed") {
+        app.state::<StartupErrorState>().push(format!("{:#}", e));
+        emit_error_to_main_window(app.handle(), e.into())
     }
     Ok(())
 }
@@ -208,10 +206,12 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
     window
 }
 
-pub fn emit_error_to_main_window(app: &tauri::AppHandle, message: String) {
+pub fn emit_error_to_main_window(app: &tauri::AppHandle, error: Box<dyn Error + Send + Sync>) {
     let window = app
         .get_webview_window("main")
         .unwrap_or_else(|| build_main_window(app));
     window.show().expect("show main window");
-    window.emit("error", message).expect("emit message error");
+    window
+        .emit("error", format!("{:#}", error))
+        .expect("emit message error");
 }

@@ -4,13 +4,15 @@
 mod commands;
 
 use log::{error, info};
-use talkful_lib::{build_main_window, initialize, on_record_ended, on_record_started,emit_error_to_main_window};
-use tauri::{Emitter, Manager, WindowEvent};
+use talkful_lib::{
+    build_main_window, emit_error_to_main_window, initialize, on_record_ended, on_record_started,
+};
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
-use commands::settings::{get_settings, set_settings};
 use crate::commands::asr::{download_model_files, get_model_directory_path};
 use crate::commands::system_errors::get_startup_errors;
+use commands::settings::{get_settings, set_settings};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -24,12 +26,12 @@ async fn main() {
                 .with_handler(move |app, _key, event| match event.state {
                     ShortcutState::Pressed => {
                         if let Err(error) = on_record_started(app) {
-                            emit_error_to_main_window(app, format!("{:?}", error));
+                            emit_error_to_main_window(app, error.into_boxed_dyn_error());
                         }
                     }
                     ShortcutState::Released => {
                         if let Err(error) = on_record_ended(app) {
-                            emit_error_to_main_window(app, format!("{:?}", error));
+                            emit_error_to_main_window(app, error.into_boxed_dyn_error());
                         }
                     }
                 })
