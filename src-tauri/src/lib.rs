@@ -4,7 +4,7 @@ use std::sync::Mutex;
 pub mod asr;
 pub mod config;
 pub mod record;
-mod shared;
+pub mod shared;
 
 use crate::asr::sherpa_asr_processor::SherpaASRProcessor;
 use crate::config::{DotfileConfigStore, IConfigStore};
@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use asr::ASRService;
 use enigo::{Enigo, Keyboard, Settings};
 use tauri::window::Color;
-use tauri::{App, AppHandle, Emitter, Manager, PhysicalSize, WebviewWindow};
+use tauri::{App, AppHandle, Emitter, Manager, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut};
 use tokio::sync::oneshot;
 

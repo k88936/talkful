@@ -1,13 +1,13 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::config;
+use crate::shared;
 use crate::config::{AppConfig, DotfileConfigStore, IConfigStore};
 use anyhow::{Context, Result};
 
 impl DotfileConfigStore {
     pub(crate) fn new() -> Result<Self> {
-        let path = config::get_base_path().join("config.yaml");
+        let path = shared::get_base_path().join("config.yaml");
         let config = load_or_default_from_path(&path)?;
         Ok(Self {
             path,

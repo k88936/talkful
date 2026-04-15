@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::path::Path;
+use talkful_lib::shared::get_base_path;
 
 #[derive(Debug, Deserialize)]
 pub struct DownloadModelFileRequest {
@@ -16,7 +17,7 @@ pub struct DownloadModelFilesRequest {
 
 #[tauri::command]
 pub fn get_model_directory_path() -> Result<String, String> {
-    let model_directory_path = talkful_lib::config::get_base_path().join("models");
+    let model_directory_path = talkful_lib::shared::get_base_path().join("models");
     model_directory_path
         .into_os_string()
         .into_string()
@@ -59,7 +60,7 @@ pub async fn download_model_files(request: DownloadModelFilesRequest) -> Result<
         .build()
         .map_err(|error| format!("failed to build HTTP client: {error}"))?;
 
-    let model_directory_path = talkful_lib::config::get_base_path().join("models");
+    let model_directory_path = get_base_path().join("models");
     std::fs::create_dir_all(&model_directory_path)
         .map_err(|error| format!("failed to create model directory: {error}"))?;
 
