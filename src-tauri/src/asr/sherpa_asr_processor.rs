@@ -22,7 +22,8 @@ impl SherpaASRProcessor {
             };
         } else {
             return Err(anyhow!(
-                "path {} is not exist, download paraformer model first", path.to_str().unwrap()
+                "path {} is not exist, download paraformer model first",
+                path.to_str().unwrap()
             ));
         }
         let path = base_path.join(ASR_TOKEN_FILENAME);
@@ -30,7 +31,8 @@ impl SherpaASRProcessor {
             config.model_config.tokens = Some(path.to_str().unwrap().to_owned());
         } else {
             return Err(anyhow!(
-                "path {} is not exist, download paraformer model first", path.to_str().unwrap()
+                "path {} is not exist, download paraformer model first",
+                path.to_str().unwrap()
             ));
         }
         config.model_config.num_threads = 8;

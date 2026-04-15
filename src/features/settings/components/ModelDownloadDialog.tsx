@@ -195,7 +195,7 @@ export const ModelDownloadDialog = ({show, onClose}: ModelDownloadDialogProps) =
                             label="HTTP proxy URL (optional)"
                             value={httpProxyUrl}
                             size={Size.L}
-                            help="Use protocol://host:port, for example http://host:port, and auth form http://user:pass@host:port. Leave empty for direct download."
+                            help="Use protocol://(user:pass@)host:port, Leave empty to honor proxy env or direct download"
                             onChange={event => setHttpProxyUrl(event.currentTarget.value)}
                         />
                         {downloadError === null ? null : (

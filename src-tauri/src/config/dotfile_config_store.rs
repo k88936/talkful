@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::shared;
 use crate::config::{AppConfig, DotfileConfigStore, IConfigStore};
+use crate::shared;
 use anyhow::{Context, Result};
 
 impl DotfileConfigStore {

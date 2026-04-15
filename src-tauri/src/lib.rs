@@ -173,7 +173,7 @@ pub fn build_main_window(app: &AppHandle) -> WebviewWindow {
 pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
     let float_window_url = tauri::WebviewUrl::App("index.html".into());
     let window = tauri::WebviewWindowBuilder::new(app, "float", float_window_url)
-        .inner_size(256.0,128.0)
+        .inner_size(256.0, 128.0)
         .resizable(false)
         .closable(false)
         .focused(false)

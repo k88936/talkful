@@ -23,4 +23,3 @@ pub trait IConfigStore {
     fn get(&self) -> AppConfig;
     fn set(&self, new_config: AppConfig) -> anyhow::Result<AppConfig>;
 }
-
