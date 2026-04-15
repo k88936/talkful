@@ -33,5 +33,5 @@ pub fn get_base_path() -> PathBuf {
     #[cfg(feature = "local_data_dir")]
     let base = ".";
 
-    PathBuf::from(base).join(".talkful")
+    PathBuf::from(base).join("talkful")
 }
