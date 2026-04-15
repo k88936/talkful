@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use asr::ASRService;
 use enigo::{Enigo, Keyboard, Settings};
 use tauri::window::Color;
-use tauri::{App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri::{App, AppHandle, Emitter, Manager, PhysicalSize, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut};
 use tokio::sync::oneshot;
 
@@ -50,30 +50,12 @@ impl StartupErrorState {
 }
 
 pub fn on_record_started(app: &AppHandle) -> Result<()> {
-    // show the float window in the focused monitor
-    let cursor_pos = app
-        .cursor_position()
-        .context("failed to get cursor position")?;
-    let target_monitor = app
-        .monitor_from_point(cursor_pos.x, cursor_pos.y)
-        .context("failed to resolve monitor for cursor position")?
-        .context("no monitor found for cursor position")?;
-    let screen_size = target_monitor.size();
-    let screen_pos = target_monitor.position();
-
-    let window_width = 256;
-    let window_height = 64;
-
-    let x = screen_pos.x + (screen_size.width as i32 - window_width) / 2;
-    let y = screen_pos.y + (screen_size.height as i32 - window_height) - 256;
     let window = app
         .get_webview_window("float")
         // recreate if fail
         .unwrap_or_else(|| build_float_window(app));
-    // set pos and size
-    window.set_size(PhysicalSize::new(window_width, window_height))?;
-    window.set_position(PhysicalPosition::new(x, y))?;
     window.show()?;
+    window.center()?;
 
     let (signal_tx, signal_rx) = oneshot::channel();
     let handle_cpy = app.clone();
@@ -169,12 +151,13 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
 pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.manage(StartupErrorState::default());
     build_main_window(app.handle());
-    build_float_window(app.handle());
 
     if let Err(e) = init_services(app.handle()).context("init services failed") {
         app.state::<StartupErrorState>().push(format!("{:#}", e));
         emit_error_to_main_window(app.handle(), e.into())
     }
+
+    build_float_window(app.handle());
     Ok(())
 }
 
@@ -190,6 +173,7 @@ pub fn build_main_window(app: &AppHandle) -> WebviewWindow {
 pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
     let float_window_url = tauri::WebviewUrl::App("index.html".into());
     let window = tauri::WebviewWindowBuilder::new(app, "float", float_window_url)
+        .inner_size(256.0,128.0)
         .resizable(false)
         .closable(false)
         .focused(false)
@@ -199,10 +183,12 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .shadow(false)
         .decorations(false)
         .always_on_top(true)
-        .visible(false)
+        // .visible(false)
         .skip_taskbar(true)
         .build()
         .expect("failed to create window");
+    window.center().unwrap();
+    window.hide().unwrap();
     window
 }
 

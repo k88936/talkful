@@ -4,9 +4,7 @@
 mod commands;
 
 use log::{error, info};
-use talkful_lib::{
-    build_main_window, emit_error_to_main_window, initialize, on_record_ended, on_record_started,
-};
+use talkful_lib::{emit_error_to_main_window, initialize, on_record_ended, on_record_started};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 

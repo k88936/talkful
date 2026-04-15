@@ -1,4 +1,4 @@
-use tauri::{State, Window};
+use tauri::{State};
 use talkful_lib::StartupErrorState;
 
 #[tauri::command]
