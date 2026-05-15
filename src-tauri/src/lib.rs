@@ -34,8 +34,7 @@ pub fn on_record_started(app: &AppHandle) -> Result<()> {
         .get_webview_window("float")
         // recreate if fail
         .unwrap_or_else(|| build_float_window(app));
-    window.show()?;
-    window.center()?;
+    center_window_on_current_screen(app, &window)?;
 
     let (signal_tx, signal_rx) = oneshot::channel();
     let handle_cpy = app.clone();
@@ -170,9 +169,26 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .skip_taskbar(true)
         .build()
         .expect("failed to create window");
-    window.center().unwrap();
+    center_window_on_current_screen(app, &window).unwrap();
     window.hide().unwrap();
     window
+}
+
+fn center_window_on_current_screen(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
+    let cursor = app.cursor_position().context("failed to get cursor position")?;
+    let monitor = app
+        .monitor_from_point(cursor.x, cursor.y)
+        .context("failed to get monitor from cursor")?
+        .context("cursor is not on any monitor")?;
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size()?;
+
+    let x = monitor_position.x + (monitor_size.width as i32 - window_size.width as i32)/2;
+    let y = monitor_position.y + (monitor_size.height as i32 - window_size.height as i32)/2;
+    window.show()?;
+    window.set_position(tauri::PhysicalPosition::new(x, y))?;
+    Ok(())
 }
 
 pub fn emit_error_to_main_window(app: &tauri::AppHandle, error: Box<dyn Error + Send + Sync>) {
