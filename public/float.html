@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Junie-Style Hero Animation</title>
+    <style>
+        :root {
+            --bg: #050706;
+            --ink: #d8ffd8;
+            --accent: #45df4c;
+            --soft: #8be18e;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            font-family: "JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+            color: var(--ink);
+        }
+
+        #junie-page {
+            width: 100%;
+            min-height: 100%;
+        }
+
+        .hero-section {
+            position: relative;
+            width: 100%;
+            min-height: 100vh;
+            overflow: hidden;
+            isolation: isolate;
+        }
+
+        .hero-section canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        @media (max-width: 680px) {
+            h1 {
+                line-height: 1.02;
+            }
+        }
+    </style>
+</head>
+
+<body>
+<div id="junie-page">
+    <section class="hero-section">
+        <canvas id="hero-canvas"></canvas>
+    </section>
+</div>
+
+<script type="module">
+    import * as THREE from "https://unpkg.com/three@0.162.0/build/three.module.js";
+
+    const canvas = document.getElementById("hero-canvas");
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (prefersReducedMotion) {
+        const ctx = canvas.getContext("2d");
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const drawFallback = () => {
+            const w = Math.floor(window.innerWidth * dpr);
+            const h = Math.floor(window.innerHeight * dpr);
+            canvas.width = w;
+            canvas.height = h;
+            ctx.fillStyle = "#0a110a";
+            ctx.fillRect(0, 0, w, h);
+            for (let y = 0; y < h; y += 8) {
+                for (let x = 0; x < w; x += 8) {
+                    const t = ((x * 17 + y * 31) % 100) / 100;
+                    const on = t > 0.72;
+                    ctx.fillStyle = on ? "#45df4c" : "#000000";
+                    ctx.fillRect(x, y, 8, 8);
+                }
+            }
+        };
+        drawFallback();
+        window.addEventListener("resize", drawFallback);
+    } else {
+        initWebGL();
+    }
+
+    function initWebGL() {
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({canvas, alpha: true, antialias: false});
+
+        const uniforms = {
+            uTime: {value: 0},
+            uResolution: {value: new THREE.Vector2(1, 1)}
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+      void main() {
+        gl_Position = vec4(position, 1.0);
+      }
+  `,
+            fragmentShader: `
+      precision highp float;
+
+      uniform float uTime;
+      uniform vec2 uResolution;
+
+      float hash(vec2 p) {
+        p = fract(p * vec2(234.34, 435.345));
+        p += dot(p, p + 34.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+
+      float fbm(vec2 p, float t) {
+        float v = 0.0;
+        float a = 0.55;
+        vec2 flow = vec2(sin(t * 0.2), cos(t * 0.17));
+
+        for (int i = 0; i < 5; i++) {
+          v += a * noise(p + flow);
+          p = mat2(1.6, -1.2, 1.2, 1.6) * p + vec2(3.0, 1.5);
+          a *= 0.52;
+          flow *= 1.18;
+        }
+
+        return v;
+      }
+
+      float bayer4x4(vec2 pixel) {
+        int x = int(mod(pixel.x, 4.0));
+        int y = int(mod(pixel.y, 4.0));
+        int index = y * 4 + x;
+        float matrix[16];
+        matrix[0]=0.0; matrix[1]=8.0; matrix[2]=2.0; matrix[3]=10.0;
+        matrix[4]=12.0; matrix[5]=4.0; matrix[6]=14.0; matrix[7]=6.0;
+        matrix[8]=3.0; matrix[9]=11.0; matrix[10]=1.0; matrix[11]=9.0;
+        matrix[12]=15.0; matrix[13]=7.0; matrix[14]=13.0; matrix[15]=5.0;
+        return matrix[index] / 15.0;
+      }
+
+      void main() {
+        vec2 frag = gl_FragCoord.xy;
+        vec2 uv = frag / uResolution;
+
+        float pixelStep = 7.0;
+        vec2 pixelFrag = floor(frag / pixelStep) * pixelStep;
+        vec2 pixelUv = pixelFrag / uResolution;
+
+        vec2 pan = vec2(0.01* sin(uTime * 0.02)+uTime*0.8, 0.04* cos(uTime * 0.14)) * 0.1;
+        float base = fbm(pixelUv * 6.0 + pan, uTime * 0.22);
+
+        float signal = clamp(base * 0.95 - 0.22, 0.0, 1.0);
+        signal = pow(signal, 1.2);
+
+        float dither = (bayer4x4(pixelFrag) - 0.5) * 0.22;
+        float threshold = smoothstep(0.47, 0.53, signal + dither);
+
+        vec4 black = vec4(0.0, 0.0, 0.0, 0.0);
+        vec4 green = vec4(0.27, 0.87, 0.30, 0.1);
+        vec4 color = mix(black, green, threshold);
+
+        // Very subtle vignette to keep center readable.
+        float vignette = smoothstep(1.05, 0.28, distance(uv, vec2(0.5)));
+        color *= mix(0.75, 1.0, vignette);
+
+        gl_FragColor = color;
+      }
+  `
+        });
+
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+        scene.add(quad);
+
+        function resize() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setPixelRatio(dpr);
+            renderer.setSize(w, h, false);
+            uniforms.uResolution.value.set(w * dpr, h * dpr);
+        }
+
+        window.addEventListener("resize", resize);
+
+        resize();
+
+        renderer.setAnimationLoop((timeMs) => {
+            uniforms.uTime.value = timeMs * 0.01;
+            renderer.render(scene, camera);
+        });
+    }
+</script>
+</body>
+
+</html>

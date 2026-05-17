@@ -153,7 +153,7 @@ pub fn build_main_window(app: &AppHandle) -> WebviewWindow {
 }
 
 pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
-    let float_window_url = tauri::WebviewUrl::App("index.html".into());
+    let float_window_url = tauri::WebviewUrl::App("float.html".into());
     let window = tauri::WebviewWindowBuilder::new(app, "float", float_window_url)
         .inner_size(256.0, 128.0)
         .resizable(false)
@@ -161,7 +161,7 @@ pub fn build_float_window(app: &AppHandle) -> WebviewWindow {
         .focused(false)
         .focusable(false)
         .transparent(true)
-        .background_color(Color(0, 0, 0, 128))
+        .background_color(Color(0, 0, 0, 16))
         .shadow(false)
         .decorations(false)
         .always_on_top(true)
