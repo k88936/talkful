@@ -34,3 +34,4 @@ tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 ureq = { version = "2.12", features = ["proxy-from-env"] }
 sherpa-onnx = { version = "1.12.38"}
+clap = { version = "4", features = ["derive"] }

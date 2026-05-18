@@ -12,6 +12,7 @@ use crate::config::{DotfileConfigStore, IConfigStore};
 use crate::record::cpal_record_service::CPALRecordService;
 use crate::record::{RecordService, RecordSignal};
 use anyhow::{Context, Result};
+use clap::Parser;
 use asr::ASRService;
 use enigo::{Enigo, Keyboard, Settings};
 use tauri::window::Color;
@@ -127,12 +128,21 @@ pub fn init_services(app: &AppHandle) -> Result<()> {
     app.global_shortcut().register(Shortcut::new(None, code))?;
     Ok(())
 }
+#[derive(Parser, Debug)]
+#[command(name = "talkful")]
+struct Args {
+    #[arg(long)]
+    silent_start: bool,
+}
 pub fn initialize(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
     let log_state = logging::init_logger().map_err(|error| {
         std::io::Error::other(format!("failed to initialize logger: {error:#}"))
     })?;
     app.manage(log_state);
-    build_main_window(app.handle());
+    if (!args.silent_start){
+        build_main_window(app.handle());
+    }
 
     if let Err(e) = init_services(app.handle()).context("init services failed") {
         log::error!("{:#}", e);
